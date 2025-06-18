@@ -28,6 +28,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Security hardening
+RUN apk add --no-cache dumb-init
+
 # Create a non-root user to run the application
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S -u 1001 -G nodejs nextjs
@@ -44,6 +47,12 @@ RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Security: Remove package managers and unnecessary files
+RUN apk del --no-cache
+
+# Create credentials directory with proper permissions
+RUN mkdir -p /app/credentials && chown nextjs:nodejs /app/credentials
+
 USER nextjs
 
 EXPOSE 3000
@@ -53,4 +62,5 @@ ENV HOSTNAME="0.0.0.0"
 
 # Server.js is created by next build from the standalone output
 # https://nextjs.org/docs/pages/api-reference/config/next-config-js/output
+ENTRYPOINT ["dumb-init", "--"]
 CMD ["bun", "run", "server.js"]
