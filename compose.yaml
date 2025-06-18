@@ -92,4 +92,4 @@ services:
 
 networks:
   default:
-    name: veo-dashboard-network 
+    name: veo-dashboard-network

@@ -6,7 +6,7 @@ export interface VideoRecord {
   id: string;
   korean_prompt: string;
   english_prompt: string;
-  status: 'pending' | 'translating' | 'generating' | 'completed' | 'error';
+  status: 'pending' | 'translating' | 'generating' | 'processing' | 'completed' | 'error';
   video_url?: string;
   thumbnail_url?: string;
   duration?: number;
@@ -126,7 +126,7 @@ class VideoDatabase {
     
     try {
       const stmt = this.db.query(updateSQL);
-      const values = fields.map(field => updates[field as keyof typeof updates]);
+      const values = fields.map(field => updates[field as keyof typeof updates]).filter((val): val is NonNullable<typeof val> => val !== undefined);
       values.push(id);
       
       const result = stmt.run(...values);
