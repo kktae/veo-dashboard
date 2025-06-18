@@ -1,0 +1,68 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Development Workflow Guidelines
+
+## Environment Setup
+1. **Dependencies**: Use `bun install` for package management
+2. **Environment Variables**: Configure `.env.local` with Google Cloud credentials
+3. **Development Server**: Run `bun dev` with Turbopack for fast development
+
+## Code Organization Principles
+- **Modular Architecture**: Each feature has its own directory structure
+- **Type Safety**: All functions and components must have TypeScript interfaces
+- **Reusability**: Create shared utilities and components for common functionality
+- **Separation of Concerns**: Business logic in hooks, UI logic in components
+
+## File Structure Standards
+```
+src/
+├── types/           # TypeScript interfaces and types
+├── lib/            # Utilities and service classes  
+├── hooks/          # Custom React hooks
+├── components/     # React components
+│   └── ui/         # shadcn/ui component library
+└── app/            # Next.js App Router pages and API routes
+```
+
+## Testing Approach
+- **Type Safety**: TypeScript catches most errors at compile time
+- **Runtime Validation**: API routes validate input parameters
+- **Error Boundaries**: Components handle errors gracefully
+- **Logging**: Comprehensive logging helps debug issues in development
+
+## Performance Guidelines
+- **Bundle Size**: Use dynamic imports for heavy dependencies
+- **Hydration**: Prevent SSR/CSR mismatches with proper client-only rendering
+- **API Efficiency**: Minimize API calls, batch operations when possible
+- **Loading States**: Always provide user feedback during async operations
+
+## Git Workflow
+- **Feature Branches**: Create branches for new features or bug fixes
+- **Commit Messages**: Use descriptive commit messages
+- **Code Review**: Review changes before merging to main branch
+
+## Common Issues & Solutions
+### Hydration Mismatch
+- **Problem**: Browser extensions modify DOM after SSR
+- **Solution**: Use `suppressHydrationWarning` or client-only rendering
+- **Example**: See [src/components/video-dashboard.tsx](mdc:src/components/video-dashboard.tsx)
+
+### Long-Running Operations
+- **Problem**: Video generation takes time, user needs feedback
+- **Solution**: Polling with status updates and loading states
+- **Example**: See [src/lib/ai.ts](mdc:src/lib/ai.ts) VideoGenerationService
+
+### Error Handling
+- **Problem**: Multiple failure points in AI pipeline
+- **Solution**: Error handling at each layer with detailed logging
+- **Example**: See [src/hooks/use-video-generation.ts](mdc:src/hooks/use-video-generation.ts)
+
+## Deployment Checklist
+1. Verify all environment variables are set
+2. Test API endpoints with valid Google Cloud credentials
+3. Ensure responsive design works on mobile devices
+4. Check browser console for errors or warnings
+5. Validate video playback functionality

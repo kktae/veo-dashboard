@@ -1,0 +1,58 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# React Component Patterns
+
+## Component Architecture
+The project follows a clear component hierarchy with separation of concerns.
+
+## Main Dashboard Component
+[src/components/video-dashboard.tsx](mdc:src/components/video-dashboard.tsx) serves as the main container:
+- **Hydration Safety**: Uses `isMounted` state to prevent SSR/CSR mismatches
+- **State Management**: Integrates with `useVideoGeneration` custom hook
+- **Layout**: Grid-based responsive design with proper spacing
+- **Loading States**: Skeleton UI while mounting
+
+## Form Component Pattern
+[src/components/video-prompt-form.tsx](mdc:src/components/video-prompt-form.tsx):
+- **Controlled Input**: Uses local state for immediate UI feedback
+- **Validation**: Client-side validation before submission
+- **Accessibility**: Proper form structure and ARIA attributes
+- **Loading States**: Disabled state during processing
+- **Hydration Fix**: `suppressHydrationWarning` on textarea to handle browser extensions
+
+## Result Display Pattern
+[src/components/video-result-card.tsx](mdc:src/components/video-result-card.tsx):
+- **Status-Driven UI**: Different layouts based on `VideoGenerationResult.status`
+- **Progressive Enhancement**: Shows more content as data becomes available
+- **Real-time Updates**: Animated loading states with status badges
+- **Media Handling**: Proper video element with fallbacks
+
+## TypeScript Integration
+All components use strict TypeScript with interfaces from [src/types/index.ts](mdc:src/types/index.ts):
+```typescript
+interface ComponentProps {
+  onSubmit: (prompt: string) => void;
+  isLoading: boolean;
+}
+```
+
+## shadcn/ui Integration
+- **Consistent Design**: All components use shadcn/ui primitives
+- **Theme Support**: Built-in dark/light mode compatibility
+- **Accessibility**: WCAG-compliant components out of the box
+- **Customization**: Tailwind classes for project-specific styling
+
+## State Management Pattern
+- **Custom Hook**: Business logic abstracted to `useVideoGeneration`
+- **Immutable Updates**: All state updates use spread operators
+- **Error Boundaries**: Proper error handling at component level
+- **Loading States**: Centralized loading state management
+
+## Performance Patterns
+- **Client-Side Rendering**: Critical components rendered only after hydration
+- **Lazy Loading**: Heavy components loaded only when needed
+- **Memoization**: Callbacks wrapped with `useCallback` for stability
+- **Optimistic Updates**: UI updates immediately, with rollback on error

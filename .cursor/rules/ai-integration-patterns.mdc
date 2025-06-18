@@ -1,0 +1,64 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# AI Services Integration Patterns
+
+## Service Classes
+AI integrations are organized in [src/lib/ai.ts](mdc:src/lib/ai.ts) as static service classes.
+
+## Google Gemini Integration
+### TranslationService Class
+- **Purpose**: Korean to English translation for video prompts
+- **Model**: `gemini-2.0-flash-lite-001`
+- **Configuration**: Low temperature (0.4) for consistent translations
+- **Safety**: All harm categories disabled for creative content
+- **System Instruction**: Optimized for video generation context
+
+### Implementation Pattern
+```typescript
+export class TranslationService {
+  static async translateKoreanToEnglish(koreanText: string): Promise<string> {
+    // Logging, timing, configuration
+    // API call with error handling
+    // Result processing and logging
+  }
+}
+```
+
+## Google Veo Integration  
+### VideoGenerationService Class
+- **Purpose**: Generate videos from English prompts
+- **Model**: `veo-2.0-generate-001`
+- **Configuration**: 16:9 aspect ratio, 8-second duration, enhanced prompts
+- **Polling**: Monitors operation status until completion
+- **Output**: Supports GCS URI for video storage
+
+### Long-Running Operation Pattern
+```typescript
+let operation = await ai.models.generateVideos(config);
+while (!operation.done) {
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  operation = await ai.operations.getVideosOperation({ operation });
+}
+```
+
+## Error Handling Strategy
+- Service-level try/catch with detailed logging
+- API-level error responses with HTTP status codes  
+- Client-level error state management
+- User-friendly error messages in UI
+
+## Environment Configuration
+Required environment variables:
+- `GOOGLE_CLOUD_PROJECT` - GCP project ID
+- `GOOGLE_CLOUD_LOCATION` - AI service region
+- `GOOGLE_GENAI_USE_VERTEXAI` - Use Vertex AI vs direct API
+- `GOOGLE_CLOUD_OUTPUT_GCS_URI` - Video storage location (optional)
+
+## Performance Considerations
+- All operations include timing measurements
+- Long-running operations use polling with backoff
+- Client shows real-time status updates
+- Comprehensive logging for debugging performance issues
