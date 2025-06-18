@@ -1,0 +1,50 @@
+# dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files
+.env*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# vercel
+.vercel
+
+# next.js
+/.next/
+/out/
+
+# debug
+*.log
+
+# IDEs and editors
+/.vscode
+/.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+*.pem
+
+# testing
+/coverage
+
+# misc
+.gitignore
+README.md
+Dockerfile*
+.dockerignore
+docker-compose*
+
+# Bun
+.bun
+
+# git
+.git
+.gitignore 

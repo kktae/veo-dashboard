@@ -8,12 +8,14 @@
 - **자동 번역**: Google Gemini를 사용하여 한국어를 영어로 정확히 번역
 - **AI 비디오 생성**: Google Veo를 사용하여 고품질 비디오 자동 생성
 - **실시간 상태 추적**: 번역 → 생성 → 완료 단계별 진행 상황 표시
-- **아름다운 UI**: shadcn/ui 기반의 현대적이고 반응형 인터페이스
+- **로컬 데이터베이스**: SQLite를 사용한 프롬프트와 결과 영구 저장
+- **비디오 플레이어**: 썸네일과 커스텀 컨트롤이 포함된 모달 플레이어
 
 ## 🛠 기술 스택
 
 - **Frontend**: Next.js 15.3.3 (App Router)
 - **UI**: shadcn/ui + Tailwind CSS
+- **Database**: SQLite with better-sqlite3
 - **AI 서비스**: Google Gemini (번역) + Google Veo (비디오 생성)
 - **TypeScript**: 타입 안전성 보장
 - **상태 관리**: React Hooks (Custom Hook 패턴)
@@ -37,7 +39,10 @@ src/
 │   └── use-video-generation.ts        # 비디오 생성 상태 관리 훅
 ├── lib/
 │   ├── ai.ts                          # AI 서비스 클래스들
-│   └── utils.ts                       # 유틸리티 함수들
+│   ├── database.ts                    # SQLite 데이터베이스 관리
+│   ├── logger.ts                      # 로깅 시스템
+│   ├── video-utils.ts                 # 데이터 변환 유틸리티
+│   └── utils.ts                       # 기타 유틸리티 함수들
 └── types/
     └── index.ts                       # TypeScript 타입 정의
 ```

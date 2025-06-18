@@ -11,8 +11,11 @@ export interface VideoGenerationResult {
   id: string;
   koreanPrompt: string;
   englishPrompt: string;
-  status: 'pending' | 'translating' | 'generating' | 'completed' | 'error';
+  status: 'pending' | 'translating' | 'generating' | 'processing' | 'completed' | 'error';
   videoUrl?: string;
+  thumbnailUrl?: string;
+  duration?: number;
+  resolution?: string;
   error?: string;
   createdAt: Date;
   completedAt?: Date;
@@ -22,4 +25,5 @@ export interface VideoGenerationState {
   results: VideoGenerationResult[];
   isLoading: boolean;
   error: string | null;
+  selectedIds: string[];
 } 

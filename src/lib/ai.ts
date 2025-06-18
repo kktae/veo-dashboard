@@ -41,7 +41,7 @@ export class TranslationService {
         }
       ],
       systemInstruction: {
-        parts: [{"text": `You are a professional translator.`}]
+        parts: [{"text": `You are a professional translator.  You must only generate the translated text, no other text or comments.`}]
       },
     };
 

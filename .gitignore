@@ -40,4 +40,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Generated videos and thumbnails
+/public/videos/
+/public/thumbnails/
+
+.cursor
+veo-meta**
+
 veo-poc-462605-deceab945b62.json
