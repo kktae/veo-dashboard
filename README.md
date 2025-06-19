@@ -330,3 +330,85 @@ Logger.error("에러 메시지", { error });
 - CORS 및 API 레이트 리미팅 권장
 
 이 프로젝트는 Google의 최신 AI 모델을 활용하여 한국어 사용자도 쉽게 고품질 비디오를 생성할 수 있도록 설계되었습니다.
+
+## 설치 및 설정
+
+### 1. 환경 변수 설정
+
+다음 환경 변수들을 설정해야 합니다:
+
+```bash
+# Google Cloud Storage 인증 (둘 중 하나 필수)
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+# 또는
+export GCLOUD_PROJECT="your-project-id"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+
+# 기타 필요한 환경 변수들...
+```
+
+### 2. GCS 인증 설정
+
+#### 방법 1: 서비스 계정 키 파일 사용
+1. Google Cloud Console에서 서비스 계정 키 파일 다운로드
+2. 키 파일을 안전한 위치에 저장
+3. `GOOGLE_APPLICATION_CREDENTIALS` 환경 변수에 키 파일 경로 설정
+
+#### 방법 2: gcloud CLI 인증 사용
+```bash
+# gcloud CLI 설치 후 인증
+gcloud auth application-default login
+```
+
+### 3. 필요한 디렉토리 생성
+
+애플리케이션이 시작되기 전에 다음 디렉토리들이 자동으로 생성되지만, 수동으로 생성할 수도 있습니다:
+
+```bash
+mkdir -p temp/videos temp/thumbnails
+mkdir -p public/videos public/thumbnails
+```
+
+## 문제 해결
+
+### GCS 파일 다운로드 오류
+
+다음과 같은 오류가 발생하는 경우:
+
+```
+ffprobe exited with code 1
+ENOENT: no such file or directory, rename 'temp/videos/...'
+```
+
+**원인과 해결 방법:**
+
+1. **GCS 인증 문제**
+   - `GOOGLE_APPLICATION_CREDENTIALS` 또는 gcloud 인증이 올바르게 설정되었는지 확인
+   - 서비스 계정에 해당 GCS 버킷에 대한 읽기 권한이 있는지 확인
+
+2. **temp 디렉토리 생성 실패**
+   - 애플리케이션이 temp 디렉토리를 생성할 권한이 있는지 확인
+   - 수동으로 디렉토리 생성: `mkdir -p temp/videos temp/thumbnails`
+
+3. **GCS 파일 존재하지 않음**
+   - 해당 GCS URI의 파일이 실제로 존재하는지 확인
+   - GCS 버킷과 파일에 대한 액세스 권한 확인
+
+4. **네트워크 연결 문제**
+   - VM에서 Google Cloud Storage에 연결할 수 있는지 확인
+   - 방화벽 설정 확인
+
+### 디버깅
+
+로그에서 다음과 같은 정보를 확인하세요:
+
+- `Video Utils - GCS client initialized`: GCS 클라이언트 초기화 성공
+- `Video Utils - GCS access verified`: GCS 액세스 검증 성공
+- `Video Utils - Video downloaded successfully`: 파일 다운로드 성공
+- `Video Utils - FFmpeg processing finished`: FFmpeg 처리 완료
+
+### 권한 확인
+
+서비스 계정에 다음 권한이 필요합니다:
+- Storage Object Viewer (storage.objects.get)
+- Storage Legacy Bucket Reader (storage.buckets.list)
