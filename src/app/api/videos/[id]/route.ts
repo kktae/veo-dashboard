@@ -15,8 +15,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     Logger.apiStart(route, { id });
 
-    const db = getDatabase();
-    const video = db.getVideo(id);
+    const db = await getDatabase();
+    const video = await db.getVideo(id);
 
     if (!video) {
       Logger.warn('Video record not found', { route, id });
@@ -55,8 +55,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       updateFields: Object.keys(updates)
     });
 
-    const db = getDatabase();
-    const updatedVideo = db.updateVideo(id, updates);
+    const db = await getDatabase();
+    const updatedVideo = await db.updateVideo(id, updates);
 
     if (!updatedVideo) {
       Logger.warn('Video record not found for update', { route, id });
@@ -93,8 +93,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     Logger.apiStart(route, { id });
 
-    const db = getDatabase();
-    const deleted = db.deleteVideo(id);
+    const db = await getDatabase();
+    const deleted = await db.deleteVideo(id);
 
     if (!deleted) {
       Logger.warn('Video record not found for deletion', { route, id });

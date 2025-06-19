@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase, VideoRecord } from '@/lib/database';
+import { initializeVideoSync } from '@/lib/video-sync';
 import { Logger } from '@/lib/logger';
+
+// 초기화 상태 추적
+let isVideoSyncInitialized = false;
 
 // GET /api/videos - Get all videos with pagination
 export async function GET(request: NextRequest) {
@@ -8,6 +12,17 @@ export async function GET(request: NextRequest) {
   const route = '/api/videos';
   
   try {
+    // 최초 API 호출 시 비디오 동기화 서비스 초기화
+    if (!isVideoSyncInitialized) {
+      Logger.step('Initializing video sync service on first API call');
+      initializeVideoSync().catch(error => {
+        Logger.warn('Failed to initialize video sync service', {
+          error: error instanceof Error ? error.message : error
+        });
+      });
+      isVideoSyncInitialized = true;
+    }
+
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
@@ -15,13 +30,13 @@ export async function GET(request: NextRequest) {
 
     Logger.apiStart(route, { limit, offset, status });
 
-    const db = getDatabase();
+    const db = await getDatabase();
     let videos: VideoRecord[];
 
     if (status) {
-      videos = db.getVideosByStatus(status);
+      videos = await db.getVideosByStatus(status);
     } else {
-      videos = db.getVideos(limit, offset);
+      videos = await db.getVideos(limit, offset);
     }
 
     const duration = Date.now() - startTime;
@@ -76,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     let db;
     try {
-      db = getDatabase();
+      db = await getDatabase();
       Logger.step('Database instance obtained', { route });
     } catch (dbError) {
       Logger.error('Failed to get database instance', {
@@ -87,7 +102,7 @@ export async function POST(request: NextRequest) {
       throw new Error('Database connection failed');
     }
 
-    const videoRecord = db.insertVideo({
+    const videoRecord = await db.insertVideo({
       id,
       korean_prompt,
       english_prompt: english_prompt || '',
@@ -123,8 +138,8 @@ export async function DELETE(request: NextRequest) {
   try {
     Logger.apiStart(route, { action: 'clear_all' });
 
-    const db = getDatabase();
-    const deletedCount = db.clearAllVideos();
+    const db = await getDatabase();
+    const deletedCount = await db.clearAllVideos();
 
     const duration = Date.now() - startTime;
     Logger.apiSuccess(route, duration, { deletedCount });

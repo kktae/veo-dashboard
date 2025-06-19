@@ -10,14 +10,14 @@ export async function GET(request: NextRequest) {
   try {
     Logger.apiStart(route, {});
 
-    const db = getDatabase();
-    const stats = db.getStats();
+    const db = await getDatabase();
+    const stats = await db.getStats();
     
     // Also get videos by status for more detailed info
-    const pendingVideos = db.getVideosByStatus('pending');
-    const translatingVideos = db.getVideosByStatus('translating');
-    const generatingVideos = db.getVideosByStatus('generating');
-    const processingVideos = db.getVideosByStatus('processing');
+    const pendingVideos = await db.getVideosByStatus('pending');
+    const translatingVideos = await db.getVideosByStatus('translating');
+    const generatingVideos = await db.getVideosByStatus('generating');
+    const processingVideos = await db.getVideosByStatus('processing');
     
     const duration = Date.now() - startTime;
     const responseData = {

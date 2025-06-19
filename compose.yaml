@@ -1,8 +1,38 @@
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: veo-postgres
+    environment:
+      - POSTGRES_DB=veo_dashboard
+      - POSTGRES_USER=${POSTGRES_USER:-veo_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-veo_password}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --locale=C
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backups:/app/backups
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-veo_user} -d veo_dashboard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   # Main application service
   veo-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1001}
+        GID: ${GID:-1001}
     image: veo-dashboard:latest
     container_name: veo-dashboard-app
+    # Use the same UID/GID as build args for consistent permissions
+    user: "${UID:-1001}:${GID:-1001}"
     ports:
       - "3000:3000"
     environment:
@@ -12,8 +42,13 @@ services:
       - PORT=3000
       - HOSTNAME=0.0.0.0
       
-      # SQLite Database settings
-      - SQLITE_DB_PATH=${SQLITE_DB_PATH:-/app/data/veo-meta.sqlite}
+      # Database settings (PostgreSQL)
+      - DATABASE_URL=${DATABASE_URL:-postgresql://veo_user:veo_password@postgres:5432/veo_dashboard}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-veo_dashboard}
+      - POSTGRES_USER=${POSTGRES_USER:-veo_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-veo_password}
       
       # Google Cloud settings
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
@@ -27,81 +62,54 @@ services:
       - MAX_CONCURRENT_VIDEO_GENERATIONS=${MAX_CONCURRENT_VIDEO_GENERATIONS:-2}
       - MAX_CONCURRENT_FFMPEG_PROCESSES=${MAX_CONCURRENT_FFMPEG_PROCESSES:-3}
     volumes:
-      # SQLite database persistence (Named volume for better management)
-      - ./data:/app/data
-      # Video storage (Named volume with host backup)
+      # Video storage
       - ./public/videos:/app/public/videos
-      # Thumbnail storage (Named volume with host backup)
+      # Thumbnail storage
       - ./public/thumbnails:/app/public/thumbnails
       # Google Cloud credentials
       - ./credentials/application_default_credentials.json:/app/credentials/application_default_credentials.json
-      # Optional: Host folder backup for data (uncomment if needed)
-      # - ./data:/app/data-backup
-      # - ./public/videos:/app/public/videos-backup  
-      # - ./public/thumbnails:/app/public/thumbnails-backup
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     # healthcheck:
     #   test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
     #   interval: 30s
     #   timeout: 10s
     #   retries: 3
     #   start_period: 40s
-    # depends_on:
-    #   - log-aggregator
 
-  # # Log aggregation service (optional)
-  # log-aggregator:
-  #   image: grafana/loki:2.9.0
-  #   container_name: veo-loki
-  #   ports:
-  #     - "3100:3100"
-  #   command: -config.file=/etc/loki/local-config.yaml
-  #   volumes:
-  #     - loki-data:/loki
-  #   restart: unless-stopped
-
-  # # Log visualization (optional)
-  # grafana:
-  #   image: grafana/grafana:10.1.0
-  #   container_name: veo-grafana
-  #   ports:
-  #     - "3001:3000"
-  #   environment:
-  #     - GF_SECURITY_ADMIN_PASSWORD=admin
-  #     - GF_USERS_ALLOW_SIGN_UP=false
-  #   volumes:
-  #     - grafana-data:/var/lib/grafana
-  #     - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - log-aggregator
-
-  # # Database backup service
-  # db-backup:
-  #   image: alpine:3.18
-  #   container_name: veo-db-backup
-  #   volumes:
-  #     - veo-database:/app/data:ro
-  #     - ./backups:/app/backups
-  #   command: |
-  #     sh -c "
-  #       while true; do
-  #         timestamp=$$(date +%Y%m%d_%H%M%S)
-  #         cp /app/data/veo-meta.sqlite /app/backups/veo-meta_$${timestamp}.sqlite
-  #         find /app/backups -name '*.sqlite' -mtime +7 -delete
-  #         sleep 86400
-  #       done
-  #     "
-  #   restart: unless-stopped
+  # Database backup service
+  db-backup:
+    image: postgres:16-alpine
+    container_name: veo-db-backup
+    volumes:
+      - ./backups:/app/backups
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-veo_dashboard}
+      - POSTGRES_USER=${POSTGRES_USER:-veo_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-veo_password}
+    command: |
+      sh -c "
+        while true; do
+          timestamp=$$(date +%Y%m%d_%H%M%S)
+          PGPASSWORD=$$POSTGRES_PASSWORD pg_dump -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB > /app/backups/veo-dashboard_$${timestamp}.sql
+          find /app/backups -name '*.sql' -mtime +7 -delete
+          sleep 86400
+        done
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
-  # Main application data volumes with proper permissions
-  veo-database:
+  # PostgreSQL database volume
+  postgres-data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./data
+  
+  # Application data volumes
   veo-videos:
     driver: local
     driver_opts:
@@ -114,20 +122,6 @@ volumes:
       type: none
       o: bind
       device: ./public/thumbnails
-  
-  # Optional: Pure named volumes (uncomment if you prefer managed volumes)
-  # veo-database:
-  #   driver: local
-  # veo-videos:
-  #   driver: local
-  # veo-thumbnails:
-  #   driver: local
-  
-  # Monitoring volumes (commented out)
-  # loki-data:
-  #   driver: local
-  # grafana-data:
-  #   driver: local
 
 networks:
   default:

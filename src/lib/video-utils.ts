@@ -47,6 +47,9 @@ class VideoProcessingQueue {
 
 const videoProcessingQueue = new VideoProcessingQueue();
 
+// Initialize Google Cloud Storage client
+const storage = new Storage();
+
 /**
  * Convert database VideoRecord to VideoGenerationResult
  */
@@ -58,6 +61,7 @@ export function recordToResult(record: VideoRecord): VideoGenerationResult {
     status: record.status,
     videoUrl: record.video_url || undefined,
     thumbnailUrl: record.thumbnail_url || undefined,
+    gcsUri: record.gcs_uri || undefined,
     duration: record.duration || undefined,
     resolution: record.resolution || undefined,
     error: record.error_message || undefined,
@@ -80,6 +84,7 @@ export function resultToRecord(result: VideoGenerationResult): Omit<VideoRecord,
     status: result.status,
     video_url: result.videoUrl || undefined,
     thumbnail_url: result.thumbnailUrl || undefined,
+    gcs_uri: result.gcsUri || undefined,
     duration: result.duration || undefined,
     resolution: result.resolution || undefined,
     error_message: result.error || undefined,
@@ -115,6 +120,9 @@ export function createUpdateFromResult(
   if (changes.thumbnailUrl !== undefined) {
     update.thumbnail_url = changes.thumbnailUrl;
   }
+  if (changes.gcsUri !== undefined) {
+    update.gcs_uri = changes.gcsUri;
+  }
   if (changes.duration !== undefined) {
     update.duration = changes.duration;
   }
@@ -130,9 +138,6 @@ export function createUpdateFromResult(
 
   return update;
 }
-
-// Initialize Google Cloud Storage client
-const storage = new Storage();
 
 /**
  * Download video from GCS and generate thumbnail
@@ -192,6 +197,9 @@ export async function downloadAndProcessVideo(gcsUri: string, videoId: string): 
       await storage.bucket(bucketName).file(filePath).download({
         destination: localVideoPath
       });
+
+      // Set video file permissions to 755 for web access
+      await fs.chmod(localVideoPath, 0o755);
 
       Logger.step('Video Utils - Video download completed, generating thumbnail', {
         videoId,
@@ -261,6 +269,16 @@ async function generateThumbnailAndMetadata(
           videoId,
           thumbnailPath: path.basename(thumbnailPath)
         });
+
+        // Set thumbnail file permissions to 755 for web access
+        try {
+          await fs.chmod(thumbnailPath, 0o755);
+        } catch (chmodError) {
+          Logger.warn('Video Utils - Failed to set thumbnail permissions', {
+            videoId,
+            error: chmodError instanceof Error ? chmodError.message : chmodError
+          });
+        }
 
         // Get video metadata
         ffmpeg.ffprobe(videoPath, (err, metadata) => {

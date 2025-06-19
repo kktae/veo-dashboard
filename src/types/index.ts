@@ -14,6 +14,7 @@ export interface VideoGenerationResult {
   status: 'pending' | 'translating' | 'generating' | 'processing' | 'completed' | 'error';
   videoUrl?: string;
   thumbnailUrl?: string;
+  gcsUri?: string;
   duration?: number;
   resolution?: string;
   error?: string;

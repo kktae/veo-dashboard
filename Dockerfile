@@ -48,6 +48,15 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV SQLITE_DB_PATH=/app/data/veo-meta.sqlite
 
+# Create a non-root user for running the application
+# Use args to allow flexible UID/GID assignment
+ARG UID=1001
+ARG GID=1001
+
+# Create group and user with specified UID/GID
+RUN addgroup -g $GID -S veogroup && \
+    adduser -u $UID -S veouser -G veogroup
+
 # Copy built application
 COPY --from=builder /app/public ./public
 
@@ -59,9 +68,12 @@ RUN mkdir .next
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Create credentials and data directories
-RUN mkdir -p /app/credentials
-RUN mkdir -p /app/data
+# Create directories and set proper ownership
+RUN mkdir -p /app/credentials /app/data /app/public/videos /app/public/thumbnails && \
+    chown -R veouser:veogroup /app
+
+# Switch to non-root user
+USER veouser:veogroup
 
 EXPOSE 3000
 

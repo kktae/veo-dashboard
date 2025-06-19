@@ -8,7 +8,7 @@
 - **자동 번역**: Google Gemini를 사용하여 한국어를 영어로 정확히 번역
 - **AI 비디오 생성**: Google Veo 2.0을 사용하여 고품질 비디오 자동 생성 (8초, 16:9 비율)
 - **실시간 상태 추적**: 번역 → 생성 → 완료 단계별 진행 상황 표시
-- **로컬 데이터베이스**: SQLite를 사용한 비디오 메타데이터 영구 저장
+- **PostgreSQL 데이터베이스**: 컨테이너 기반 PostgreSQL을 사용한 비디오 메타데이터 영구 저장
 - **비디오 관리**: 썸네일 미리보기, 일괄 선택/삭제, 모달 플레이어
 
 ## 🚀 새로고침 방지 기능
@@ -42,7 +42,7 @@
 - **Frontend**: Next.js 15.3.3 (App Router) + React 19
 - **UI Framework**: shadcn/ui + Tailwind CSS 4.0 + Radix UI
 - **Runtime**: Bun (패키지 매니저 및 런타임)
-- **Database**: SQLite (Bun:sqlite)
+- **Database**: PostgreSQL 16 (Docker 컨테이너)
 - **AI Services**: 
   - Google Gemini 2.0 Flash (번역)
   - Google Veo 2.0 (비디오 생성)
@@ -73,7 +73,7 @@ src/
 │   └── use-video-generation.ts       # 비디오 생성 상태 관리
 ├── lib/
 │   ├── ai.ts                         # AI 서비스 (Gemini, Veo)
-│   ├── database.ts                   # SQLite 데이터베이스 관리
+│   ├── database.ts                   # PostgreSQL 데이터베이스 관리
 │   ├── logger.ts                     # 구조화된 로거
 │   ├── utils.ts                      # 공통 유틸리티
 │   └── video-utils.ts                # 비디오 관련 유틸리티
@@ -96,6 +96,12 @@ bun install
 `.env.local` 파일을 생성하고 다음 값들을 설정하세요:
 
 ```bash
+# PostgreSQL Database 설정 (필수)
+POSTGRES_DB=veo_dashboard
+POSTGRES_USER=veo_user
+POSTGRES_PASSWORD=veo_password
+DATABASE_URL=postgresql://veo_user:veo_password@localhost:5432/veo_dashboard
+
 # Google Cloud 설정 (필수)
 GOOGLE_CLOUD_PROJECT=your-project-id
 GOOGLE_CLOUD_LOCATION=us-central1
@@ -117,7 +123,17 @@ GOOGLE_APPLICATION_CREDENTIALS=./credentials/service-account.json
    - `credentials/service-account.json`에 저장
 4. **권한 설정**: Vertex AI User, Storage Object Admin (GCS 사용 시)
 
-### 4. 개발 서버 실행
+### 4. PostgreSQL 데이터베이스 시작
+```bash
+# PostgreSQL 컨테이너 시작
+chmod +x start-postgres.sh
+./start-postgres.sh
+
+# 또는 직접 시작
+docker compose up -d postgres
+```
+
+### 5. 개발 서버 실행
 ```bash
 bun run dev
 ```
@@ -126,65 +142,114 @@ bun run dev
 
 ## 🐳 Docker 배포
 
-### 1. 이미지 빌드
+### 1. 권한 설정 (권장)
+Docker 컨테이너에서 생성된 파일의 권한 문제를 방지하기 위해 다음 스크립트를 실행하세요:
+
+```bash
+# 권한 설정 스크립트 실행 (권장)
+chmod +x setup-permissions.sh
+./setup-permissions.sh
+```
+
+이 스크립트는 다음 작업을 자동으로 수행합니다:
+- 현재 사용자의 UID/GID 감지
+- `.env` 파일에 UID/GID 설정
+- 필요한 디렉토리 생성 및 권한 설정
+- Docker 이미지 빌드 (올바른 UID/GID 포함)
+
+### 2. 수동 이미지 빌드 (선택사항)
 ```bash
 # 빌드 스크립트 실행
 chmod +x docker-build.sh
 ./docker-build.sh
 
-# 또는 직접 빌드
-docker build -t localhost/veo-dashboard:latest .
+# 또는 직접 빌드 (UID/GID 지정)
+docker build --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t localhost/veo-dashboard:latest .
 ```
 
-### 2. Docker Compose로 실행
+### 3. Docker Compose로 실행
 ```bash
-# 환경 변수 설정 후
-docker-compose up -d
+# setup-permissions.sh를 실행했다면 바로 시작 가능
+docker compose up -d
 
 # 로그 확인
-docker-compose logs -f veo-dashboard
+docker compose logs -f veo-dashboard
 ```
+
+### 4. 권한 문제 해결
+
+만약 비디오나 썸네일 파일의 권한 문제가 발생한다면:
+
+**문제 진단:**
+```bash
+# 파일 권한 확인
+ls -la public/videos/
+ls -la public/thumbnails/
+
+# 컨테이너 로그 확인
+docker compose logs veo-dashboard | grep -i permission
+```
+
+**해결 방법:**
+```bash
+# 1. 올바른 UID/GID로 이미지 재빌드
+./setup-permissions.sh
+
+# 2. 또는 기존 파일 권한 수정
+sudo chown -R $(id -u):$(id -g) public/videos public/thumbnails
+
+# 3. 컨테이너 재시작
+docker compose restart veo-dashboard
+```
+
+**권한 문제 예방 모범사례:**
+- ✅ 항상 `setup-permissions.sh` 스크립트 사용
+- ✅ `.env` 파일에 올바른 UID/GID 설정
+- ✅ Docker 이미지 빌드 시 build args 전달
+- ❌ 컨테이너를 root 사용자로 실행하지 않기
 
 ### 3. 볼륨 구성 및 데이터 관리
 
-Docker 볼륨 구성으로 데이터베이스, 비디오, 썸네일이 호스트와 컨테이너 간 양방향 동기화됩니다:
+Docker 볼륨 구성으로 PostgreSQL 데이터, 비디오, 썸네일이 영구 저장됩니다:
 
 ```yaml
 volumes:
-  # SQLite 데이터베이스 (Named Volume)
-  veo-database: ./data → /app/data
+  # PostgreSQL 데이터베이스 (Named Volume)
+  postgres-data: Docker 관리형 볼륨
   
-  # 비디오 파일 저장소 (Named Volume)
+  # 비디오 파일 저장소 (Host Volume)
   veo-videos: ./public/videos → /app/public/videos
   
-  # 썸네일 이미지 저장소 (Named Volume)  
+  # 썸네일 이미지 저장소 (Host Volume)  
   veo-thumbnails: ./public/thumbnails → /app/public/thumbnails
 ```
 
 **특징:**
-- 🔄 **양방향 동기화**: 호스트와 컨테이너 간 실시간 파일 공유
+- 🗄️ **PostgreSQL 안정성**: 별도 컨테이너로 데이터베이스 완전 격리
 - 📁 **데이터 영속성**: 컨테이너 재시작/업데이트 시에도 데이터 보존
-- 💾 **백업 용이성**: 호스트 디렉토리에서 직접 백업 가능
-- 🔧 **개발 편의성**: 로컬에서 파일 직접 확인/수정 가능
+- 💾 **자동 백업**: pg_dump를 이용한 일일 자동 백업 (7일 보관)
+- 🔧 **개발 편의성**: 로컬에서 비디오/썸네일 직접 확인 가능
 
 **디렉토리 구조:**
 ```
 project/js/veo-dashboard-poc/
-├── data/                    # SQLite 데이터베이스
-│   └── veo-meta.sqlite
 ├── public/
 │   ├── videos/              # 생성된 비디오 파일
 │   └── thumbnails/          # 비디오 썸네일
-└── backups/                 # 자동 백업 (선택사항)
+└── backups/                 # PostgreSQL 자동 백업
+    └── veo-dashboard_*.sql
 ```
 
-**환경 변수로 경로 커스터마이징:**
+**PostgreSQL 관리:**
 ```bash
-# .env에서 SQLite 경로 변경 가능
-SQLITE_DB_PATH=/custom/path/database.sqlite
+# 데이터베이스 연결
+docker compose exec postgres psql -U veo_user -d veo_dashboard
 
-# Docker Compose에서 볼륨 경로 변경
-SQLITE_DB_PATH=/app/data/custom.sqlite
+# 백업 상태 확인
+docker compose logs db-backup
+
+# 수동 백업
+docker compose exec postgres pg_dump -U veo_user veo_dashboard > backup.sql
 ```
 
 ## 💡 사용 방법
