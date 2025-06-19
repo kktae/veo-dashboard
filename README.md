@@ -1,24 +1,27 @@
 # Veo 비디오 생성 대시보드
 
-한국어 프롬프트를 입력하여 AI가 자동으로 영어로 번역하고 멋진 비디오를 생성하는 웹 대시보드입니다.
+한국어 프롬프트를 입력하여 AI가 자동으로 영어로 번역하고 비디오를 생성하는 웹 대시보드입니다.
 
 ## 🚀 주요 기능
 
 - **한국어 프롬프트 입력**: 자연스러운 한국어로 비디오 생성 요청
 - **자동 번역**: Google Gemini를 사용하여 한국어를 영어로 정확히 번역
-- **AI 비디오 생성**: Google Veo를 사용하여 고품질 비디오 자동 생성
+- **AI 비디오 생성**: Google Veo 2.0을 사용하여 고품질 비디오 자동 생성 (8초, 16:9 비율)
 - **실시간 상태 추적**: 번역 → 생성 → 완료 단계별 진행 상황 표시
-- **로컬 데이터베이스**: SQLite를 사용한 프롬프트와 결과 영구 저장
-- **비디오 플레이어**: 썸네일과 커스텀 컨트롤이 포함된 모달 플레이어
+- **로컬 데이터베이스**: SQLite를 사용한 비디오 메타데이터 영구 저장
+- **비디오 관리**: 썸네일 미리보기, 일괄 선택/삭제, 모달 플레이어
 
 ## 🛠 기술 스택
 
-- **Frontend**: Next.js 15.3.3 (App Router)
-- **UI**: shadcn/ui + Tailwind CSS
-- **Database**: SQLite with better-sqlite3
-- **AI 서비스**: Google Gemini (번역) + Google Veo (비디오 생성)
-- **TypeScript**: 타입 안전성 보장
-- **상태 관리**: React Hooks (Custom Hook 패턴)
+- **Frontend**: Next.js 15.3.3 (App Router) + React 19
+- **UI Framework**: shadcn/ui + Tailwind CSS 4.0 + Radix UI
+- **Runtime**: Bun (패키지 매니저 및 런타임)
+- **Database**: SQLite (Bun:sqlite)
+- **AI Services**: 
+  - Google Gemini 2.0 Flash (번역)
+  - Google Veo 2.0 (비디오 생성)
+- **Storage**: Google Cloud Storage (선택사항)
+- **Deployment**: Docker(podman) + Docker Compose(podman-compose)
 
 ## 📁 프로젝트 구조
 
@@ -26,119 +29,171 @@
 src/
 ├── app/
 │   ├── api/
-│   │   ├── translate/route.ts          # 번역 API 엔드포인트
-│   │   └── generate-video/route.ts     # 비디오 생성 API 엔드포인트
-│   ├── layout.tsx
-│   └── page.tsx                        # 메인 페이지
+│   │   ├── generate-video/route.ts    # 비디오 생성 API
+│   │   ├── translate/route.ts         # 번역 API
+│   │   ├── videos/[id]/route.ts       # 개별 비디오 조회 API
+│   │   ├── videos/route.ts            # 비디오 목록 API
+│   │   └── videos/stats/route.ts      # 비디오 통계 API
+│   ├── layout.tsx                     # 글로벌 레이아웃
+│   └── page.tsx                       # 메인 페이지
 ├── components/
-│   ├── ui/                            # shadcn/ui 컴포넌트들
-│   ├── video-dashboard.tsx            # 메인 대시보드 컴포넌트
-│   ├── video-prompt-form.tsx          # 프롬프트 입력 폼
-│   └── video-result-card.tsx          # 결과 표시 카드
+│   ├── ui/                           # shadcn/ui 컴포넌트들
+│   ├── video-dashboard.tsx           # 메인 대시보드
+│   ├── video-prompt-form.tsx         # 프롬프트 입력 폼
+│   ├── video-result-card.tsx         # 비디오 결과 카드
+│   └── video-player-modal.tsx        # 비디오 플레이어 모달
 ├── hooks/
-│   └── use-video-generation.ts        # 비디오 생성 상태 관리 훅
+│   ├── use-mobile.ts                 # 모바일 감지 훅
+│   └── use-video-generation.ts       # 비디오 생성 상태 관리
 ├── lib/
-│   ├── ai.ts                          # AI 서비스 클래스들
-│   ├── database.ts                    # SQLite 데이터베이스 관리
-│   ├── logger.ts                      # 로깅 시스템
-│   ├── video-utils.ts                 # 데이터 변환 유틸리티
-│   └── utils.ts                       # 기타 유틸리티 함수들
+│   ├── ai.ts                         # AI 서비스 (Gemini, Veo)
+│   ├── database.ts                   # SQLite 데이터베이스 관리
+│   ├── logger.ts                     # 구조화된 로거
+│   ├── utils.ts                      # 공통 유틸리티
+│   └── video-utils.ts                # 비디오 관련 유틸리티
 └── types/
-    └── index.ts                       # TypeScript 타입 정의
+    └── index.ts                      # TypeScript 타입 정의
 ```
 
 ## 🔧 설치 및 설정
 
-1. **의존성 설치**
-   ```bash
-   bun install
-   ```
+### 1. 의존성 설치
+```bash
+# Bun 설치 (https://bun.sh)
+curl -fsSL https://bun.sh/install | bash
 
-2. **환경 변수 설정**
-   `.env.local` 파일을 생성하고 다음 값들을 설정하세요:
-   ```bash
-   GOOGLE_CLOUD_PROJECT=your-project-id
-   GOOGLE_CLOUD_LOCATION=us-central1
-   GOOGLE_GENAI_USE_VERTEXAI=true
-   GOOGLE_CLOUD_OUTPUT_GCS_URI=gs://your-bucket-name/videos/
-   ```
+# 의존성 설치
+bun install
+```
 
-3. **개발 서버 실행**
-   ```bash
-   bun dev
-   ```
+### 2. 환경 변수 설정
+`.env.local` 파일을 생성하고 다음 값들을 설정하세요:
 
-4. **브라우저에서 확인**
-   [http://localhost:3000](http://localhost:3000)에서 대시보드를 확인할 수 있습니다.
+```bash
+# Google Cloud 설정 (필수)
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_LOCATION=us-central1
+GOOGLE_GENAI_USE_VERTEXAI=true
 
-## 🔑 Google Cloud 설정
+# 비디오 출력 경로 (선택사항)
+GOOGLE_CLOUD_OUTPUT_GCS_URI=gs://your-bucket-name/output
 
-### 1. Google Cloud Project 설정
-- Google Cloud Console에서 새 프로젝트 생성
-- Vertex AI API 활성화
-- Gemini API 및 Veo API 접근 권한 설정
+# Google Cloud 인증 (로컬 개발 시)
+GOOGLE_APPLICATION_CREDENTIALS=./credentials/service-account.json
+```
 
-### 2. 인증 설정
-- 서비스 계정 키 생성
-- `GOOGLE_APPLICATION_CREDENTIALS` 환경 변수 설정 또는
-- Google Cloud SDK를 통한 로컬 인증
+### 3. Google Cloud 설정
+1. **Google Cloud Console에서 프로젝트 생성**
+2. **필수 API 활성화**:
+   - Vertex AI API
+   - Generative AI API
+3. **서비스 계정 생성 및 키 다운로드**
+   - `credentials/service-account.json`에 저장
+4. **권한 설정**: Vertex AI User, Storage Object Admin (GCS 사용 시)
 
-### 3. Cloud Storage 설정 (선택사항)
-- 비디오 파일 저장을 위한 GCS 버킷 생성
-- 적절한 권한 설정
+### 4. 개발 서버 실행
+```bash
+bun run dev
+```
+
+브라우저에서 [http://localhost:3000](http://localhost:3000)으로 접속
+
+## 🐳 Docker 배포
+
+### 1. 이미지 빌드
+```bash
+# 빌드 스크립트 실행
+chmod +x dockerbuild.sh
+./dockerbuild.sh
+
+# 또는 직접 빌드
+docker build -t localhost/veo-dashboard:latest .
+```
+
+### 2. Docker Compose로 실행
+```bash
+# 환경 변수 설정 후
+docker-compose up -d
+
+# 로그 확인
+docker-compose logs -f veo-dashboard
+```
 
 ## 💡 사용 방법
 
-1. **프롬프트 입력**: 메인 페이지의 텍스트 영역에 한국어로 원하는 비디오 내용을 입력합니다.
+1. **프롬프트 입력**: 
+   - 메인 페이지에서 한국어로 원하는 비디오 내용 입력
    - 예: "여우가 숲에서 뛰어다니고 있습니다"
-   - 예: "해변에서 파도가 치고 있는 모습"
 
-2. **자동 처리**: 
-   - Gemini가 한국어를 자연스러운 영어로 번역
-   - Veo가 번역된 프롬프트로 8초 길이의 비디오 생성
+2. **자동 처리**:
+   - Gemini 2.0이 한국어를 자연스러운 영어로 번역
+   - Veo 2.0이 8초 길이의 고품질 비디오 생성
 
-3. **결과 확인**: 
-   - 실시간으로 진행 상황 표시
-   - 완료된 비디오는 카드 형태로 표시
-   - 브라우저에서 바로 재생 가능
+3. **결과 관리**:
+   - 실시간 진행 상황 표시
+   - 완료된 비디오 카드 형태로 표시
+   - 일괄 선택/삭제 기능
+   - 모달에서 비디오 재생
 
-## 🎨 디자인 원칙
+## 🗄️ 데이터베이스 스키마
 
-- **재사용성**: 컴포넌트와 훅을 분리하여 재사용 가능한 구조
-- **유지보수성**: TypeScript와 명확한 타입 정의로 안전한 코드
-- **확장성**: 새로운 AI 서비스나 기능 추가가 용이한 아키텍처
-- **사용자 경험**: 직관적인 인터페이스와 실시간 피드백
+SQLite 데이터베이스 (`veo-meta.sqlite`):
 
-## 🔄 상태 관리 패턴
-
-```typescript
-// 중앙화된 상태 관리
-const { results, isLoading, error, generateVideo, clearResults } = useVideoGeneration();
-
-// 타입 안전한 상태 업데이트
-setState(prev => ({
-  ...prev,
-  results: prev.results.map(result =>
-    result.id === id ? { ...result, status: 'generating' } : result
-  ),
-}));
+```sql
+CREATE TABLE videos (
+  id TEXT PRIMARY KEY,
+  korean_prompt TEXT NOT NULL,
+  english_prompt TEXT DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  video_url TEXT,
+  thumbnail_url TEXT,
+  duration INTEGER,
+  resolution TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  completed_at TEXT
+);
 ```
+
+## 🔄 API 엔드포인트
+
+- `POST /api/translate` - 한국어 텍스트 번역
+- `POST /api/generate-video` - 비디오 생성 요청
+- `GET /api/videos` - 비디오 목록 조회
+- `GET /api/videos/[id]` - 개별 비디오 조회
+- `GET /api/videos/stats` - 비디오 생성 통계
 
 ## 🚦 개발 가이드
 
-### 새로운 AI 서비스 추가
-1. `src/lib/ai.ts`에 새 서비스 클래스 추가
-2. `src/app/api/`에 새 API 라우트 생성
-3. 필요시 타입 정의 업데이트
+### AI 모델 설정
+기본 모델은 `src/types/index.ts`에서 설정:
+- **번역**: `gemini-2.0-flash-lite-001`
+- **비디오 생성**: `veo-2.0-generate-001`
 
-### 새로운 컴포넌트 추가
-1. `src/components/` 디렉토리에 컴포넌트 생성
-2. TypeScript 인터페이스로 Props 정의
-3. shadcn/ui 컴포넌트 활용
+### 커스텀 프롬프트 설정
+번역 프롬프트는 API 호출 시 `promptConfig`로 커스터마이징 가능
 
-### 상태 관리 로직 확장
-1. `src/hooks/use-video-generation.ts` 훅 수정
-2. 타입 정의 업데이트
-3. 컴포넌트에서 새 상태 활용
+### 로깅
+구조화된 로깅 시스템 (`src/lib/logger.ts`) 사용:
+```typescript
+Logger.step("단계 설명", { metadata });
+Logger.error("에러 메시지", { error });
+```
 
-이 프로젝트는 확장 가능하고 유지보수가 용이한 구조로 설계되어, 새로운 AI 서비스나 기능을 쉽게 추가할 수 있습니다.
+## 📦 주요 의존성
+
+- **@google/genai**: Google AI SDK
+- **@google-cloud/storage**: Google Cloud Storage
+- **lucide-react**: 아이콘
+- **fluent-ffmpeg**: 비디오 처리 유틸리티
+- **zod**: 스키마 검증
+- **react-hook-form**: 폼 관리
+
+## 🔒 보안 고려사항
+
+- 서비스 계정 키는 절대 Git에 커밋하지 않음
+- Docker 컨테이너에서 non-root 사용자로 실행
+- 환경 변수로 민감한 정보 관리
+- CORS 및 API 레이트 리미팅 권장
+
+이 프로젝트는 Google의 최신 AI 모델을 활용하여 한국어 사용자도 쉽게 고품질 비디오를 생성할 수 있도록 설계되었습니다.
