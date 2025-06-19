@@ -11,10 +11,11 @@ interface RouteParams {
 // GET /thumbnails/[id] - Serve thumbnail files directly
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const startTime = Date.now();
-  const { id } = await params;
-  const route = `/thumbnails/${id}`;
   
   try {
+    const { id } = await params;
+    const route = `/thumbnails/${id}`;
+    
     Logger.apiStart(route, { id });
 
     // Extract thumbnail ID from filename (remove .jpg extension if present)
@@ -36,6 +37,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       // Read the file
       const fileBuffer = await fs.readFile(thumbnailPath);
 
+      // Validate that we have actual content
+      if (!fileBuffer || fileBuffer.length === 0) {
+        Logger.warn('Thumbnail file is empty', { route, thumbnailPath });
+        return NextResponse.json(
+          { error: 'Thumbnail file is empty' },
+          { status: 404 }
+        );
+      }
+
       const duration = Date.now() - startTime;
       Logger.apiSuccess(route, duration, { 
         thumbnailId, 
@@ -45,10 +55,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
       // Return the thumbnail file with proper headers
       return new NextResponse(fileBuffer, {
+        status: 200,
         headers: {
           'Content-Type': 'image/jpeg',
           'Content-Length': stats.size.toString(),
           'Cache-Control': 'public, max-age=31536000, immutable',
+          'Accept-Ranges': 'bytes',
         },
       });
 
@@ -68,7 +80,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    Logger.apiError(route, duration, error);
+    Logger.apiError('Thumbnail API Error', duration, error);
     
     return NextResponse.json(
       { error: 'Failed to serve thumbnail' },

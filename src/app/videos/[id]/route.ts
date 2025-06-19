@@ -11,10 +11,11 @@ interface RouteParams {
 // GET /videos/[id] - Serve video files directly
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const startTime = Date.now();
-  const { id } = await params;
-  const route = `/videos/${id}`;
   
   try {
+    const { id } = await params;
+    const route = `/videos/${id}`;
+    
     Logger.apiStart(route, { id });
 
     // Extract video ID from filename (remove .mp4 extension if present)
@@ -33,6 +34,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         );
       }
 
+      // Validate that we have actual content
+      if (stats.size === 0) {
+        Logger.warn('Video file is empty', { route, videoPath });
+        return NextResponse.json(
+          { error: 'Video file is empty' },
+          { status: 404 }
+        );
+      }
+
       // Handle range requests for video streaming
       const range = request.headers.get('range');
       const fileSize = stats.size;
@@ -43,6 +53,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         const start = parseInt(parts[0], 10);
         const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
         const chunkSize = end - start + 1;
+
+        // Validate range
+        if (start >= fileSize || end >= fileSize || start > end) {
+          Logger.warn('Invalid range request', { route, videoId, range, fileSize });
+          return NextResponse.json(
+            { error: 'Invalid range' },
+            { status: 416 }
+          );
+        }
 
         // Read the requested chunk
         const fileHandle = await fs.open(videoPath, 'r');
@@ -74,6 +93,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Return the entire file
         const fileBuffer = await fs.readFile(videoPath);
 
+        // Double-check that file was read properly
+        if (!fileBuffer || fileBuffer.length === 0) {
+          Logger.warn('Video file buffer is empty', { route, videoPath });
+          return NextResponse.json(
+            { error: 'Video file is empty' },
+            { status: 404 }
+          );
+        }
+
         const duration = Date.now() - startTime;
         Logger.apiSuccess(route, duration, { 
           videoId, 
@@ -82,6 +110,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         });
 
         return new NextResponse(fileBuffer, {
+          status: 200,
           headers: {
             'Content-Type': 'video/mp4',
             'Content-Length': stats.size.toString(),
@@ -107,7 +136,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    Logger.apiError(route, duration, error);
+    Logger.apiError('Video API Error', duration, error);
     
     return NextResponse.json(
       { error: 'Failed to serve video' },

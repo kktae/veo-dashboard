@@ -51,12 +51,17 @@ class Logger {
   }
 
   static apiError(route: string, duration: number, error: any) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
     this.error(`API Request Failed`, {
       apiRoute: route,
       duration: duration,
       durationMs: `${duration}ms`,
-      error: error.message || error,
-      stack: error.stack,
+      error: errorMessage,
+      stack: errorStack,
+      errorType: error?.constructor?.name || typeof error,
+      timestamp: new Date().toISOString()
     });
   }
 
