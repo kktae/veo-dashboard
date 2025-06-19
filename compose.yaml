@@ -15,6 +15,9 @@ services:
       - PORT=3000
       - HOSTNAME=0.0.0.0
       
+      # SQLite Database settings
+      - SQLITE_DB_PATH=${SQLITE_DB_PATH:-/app/data/veo-meta.sqlite}
+      
       # Google Cloud settings
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
@@ -22,13 +25,18 @@ services:
       - GOOGLE_CLOUD_OUTPUT_GCS_URI=${GOOGLE_CLOUD_OUTPUT_GCS_URI}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/application_default_credentials.json
     volumes:
-      # SQLite database persistence
-      - ./data:/app/data
-      # Google Cloud credentials
+      # SQLite database persistence (Named volume for better management)
+      - veo-database:/app/data
+      # Video storage (Named volume with host backup)
+      - veo-videos:/app/public/videos
+      # Thumbnail storage (Named volume with host backup)
+      - veo-thumbnails:/app/public/thumbnails
+      # Google Cloud credentials (read-only)
       - $HOME/.config/gcloud:/app/credentials:ro
-      # Video and thumbnail storage (if not using GCS)
-      - ./public/videos:/app/public/videos
-      - ./public/thumbnails:/app/public/thumbnails
+      # Optional: Host folder backup for data (uncomment if needed)
+      # - ./data:/app/data-backup
+      # - ./public/videos:/app/public/videos-backup  
+      # - ./public/thumbnails:/app/public/thumbnails-backup
     restart: unless-stopped
     # healthcheck:
     #   test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
@@ -71,7 +79,7 @@ services:
   #   image: alpine:3.18
   #   container_name: veo-db-backup
   #   volumes:
-  #     - ./data:/app/data
+  #     - veo-database:/app/data:ro
   #     - ./backups:/app/backups
   #   command: |
   #     sh -c "
@@ -84,7 +92,36 @@ services:
   #     "
   #   restart: unless-stopped
 
-# volumes:
+volumes:
+  # Main application data volumes
+  veo-database:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data
+  veo-videos:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./public/videos
+  veo-thumbnails:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./public/thumbnails
+  
+  # Optional: Pure named volumes (uncomment if you prefer managed volumes)
+  # veo-database:
+  #   driver: local
+  # veo-videos:
+  #   driver: local
+  # veo-thumbnails:
+  #   driver: local
+  
+  # Monitoring volumes (commented out)
   # loki-data:
   #   driver: local
   # grafana-data:

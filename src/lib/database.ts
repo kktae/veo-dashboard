@@ -21,7 +21,8 @@ class VideoDatabase {
 
   constructor() {
     try {
-      const dbPath = path.join(process.cwd(), 'veo-meta.sqlite');
+      // SQLite database path from environment variable or default
+      const dbPath = process.env.SQLITE_DB_PATH || path.join(process.cwd(), 'data', 'veo-meta.sqlite');
       Logger.info('Initializing database', { dbPath });
       
       this.db = new Database(dbPath, { create: true });

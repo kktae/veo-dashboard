@@ -27,6 +27,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV SQLITE_DB_PATH=/app/data/veo-meta.sqlite
 
 # Security hardening
 RUN apk add --no-cache dumb-init
@@ -50,8 +51,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Security: Remove package managers and unnecessary files
 RUN apk del --no-cache
 
-# Create credentials directory with proper permissions
+# Create credentials and data directories with proper permissions
 RUN mkdir -p /app/credentials && chown nextjs:nodejs /app/credentials
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 
 USER nextjs
 
