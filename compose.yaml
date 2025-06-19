@@ -4,7 +4,7 @@ services:
     # build:
     #   context: .
     #   dockerfile: Dockerfile
-    image: localhost/veo-dashboard:latest
+    image: veo-dashboard:latest
     container_name: veo-dashboard-app
     ports:
       - "3000:3000"
@@ -20,12 +20,12 @@ services:
       - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
       - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI:-true}
       - GOOGLE_CLOUD_OUTPUT_GCS_URI=${GOOGLE_CLOUD_OUTPUT_GCS_URI}
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/application_default_credentials.json
     volumes:
       # SQLite database persistence
       - ./data:/app/data
       # Google Cloud credentials
-      - ./credentials:/app/credentials:ro
+      - $HOME/.config/gcloud:/app/credentials:ro
       # Video and thumbnail storage (if not using GCS)
       - ./public/videos:/app/public/videos
       - ./public/thumbnails:/app/public/thumbnails
