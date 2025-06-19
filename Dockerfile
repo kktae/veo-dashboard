@@ -37,6 +37,7 @@ COPY . .
 # Environment variables used during build time
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV NEXT_SHARP=1
 
 RUN bun run build
 

@@ -1,22 +1,39 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  // Load Balancer에서 오는 요청 처리
+  const response = NextResponse.next()
   
-  // Log requests to thumbnails and videos to help debug ERR_EMPTY_RESPONSE
-  if (pathname.startsWith('/thumbnails/') || pathname.startsWith('/videos/') || pathname === '/favicon.ico') {
-    console.log(`[MIDDLEWARE] ${request.method} ${pathname} - User-Agent: ${request.headers.get('user-agent')?.substring(0, 100)}`);
-    console.log(`[MIDDLEWARE] Headers: ${JSON.stringify(Object.fromEntries(request.headers.entries()))}`);
+  // CORS 헤더 설정
+  response.headers.set('Access-Control-Allow-Origin', '*')
+  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  
+  // 정적 파일에 대한 캐시 설정
+  if (request.nextUrl.pathname.startsWith('/_next/static/')) {
+    response.headers.set('Cache-Control', 'public, max-age=31536000, immutable')
   }
   
-  return NextResponse.next();
+  // Load Balancer health check 처리
+  if (request.nextUrl.pathname === '/health') {
+    return new NextResponse('OK', { status: 200 })
+  }
+  
+  return response
 }
 
 export const config = {
   matcher: [
-    '/thumbnails/:path*',
-    '/videos/:path*',
-    '/favicon.ico'
-  ]
-}; 
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    // 정적 파일도 포함하기 위해 추가
+    '/_next/static/:path*',
+  ],
+} 
