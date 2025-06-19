@@ -8,6 +8,75 @@ const ai = new GoogleGenAI({
   location: process.env.GOOGLE_CLOUD_LOCATION,
 });
 
+// AI API 호출 제한을 위한 세마포어 클래스
+class Semaphore {
+  private queue: Array<() => void> = [];
+  private running = 0;
+
+  constructor(private maxConcurrent: number) {}
+
+  async acquire(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.running < this.maxConcurrent) {
+        this.running++;
+        resolve();
+      } else {
+        this.queue.push(() => {
+          this.running++;
+          resolve();
+        });
+      }
+    });
+  }
+
+  release(): void {
+    this.running--;
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      if (next) next();
+    }
+  }
+}
+
+// 번역 API와 비디오 생성 API에 대한 세마포어 (환경 변수로 설정 가능)
+const MAX_CONCURRENT_TRANSLATIONS = parseInt(process.env.MAX_CONCURRENT_TRANSLATIONS || '5');
+const MAX_CONCURRENT_VIDEO_GENERATIONS = parseInt(process.env.MAX_CONCURRENT_VIDEO_GENERATIONS || '2');
+
+const translationSemaphore = new Semaphore(MAX_CONCURRENT_TRANSLATIONS);
+const videoGenerationSemaphore = new Semaphore(MAX_CONCURRENT_VIDEO_GENERATIONS);
+
+// 재시도 로직을 위한 헬퍼 함수
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delayMs: number = 1000
+): Promise<T> {
+  let lastError: Error;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      if (attempt === maxRetries) {
+        throw lastError;
+      }
+      
+      Logger.warn(`API call failed, retrying in ${delayMs}ms`, {
+        attempt,
+        maxRetries,
+        error: lastError.message
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      delayMs *= 2; // 지수 백오프
+    }
+  }
+  
+  throw lastError!;
+}
+
 export class TranslationService {
   static async translateKoreanToEnglish(
     koreanText: string,
@@ -61,28 +130,34 @@ export class TranslationService {
       },
     };
 
-    Logger.step("Translation Service - Calling Gemini API", {
-      config: {
-        maxOutputTokens: generationConfig.maxOutputTokens,
-        temperature: generationConfig.temperature,
-        topP: generationConfig.topP
-      }
-    });
-
+    // 세마포어를 사용하여 동시 번역 요청 수 제한
+    await translationSemaphore.acquire();
+    
     try {
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: [
-          {
-            role: 'user',
-            parts: [{"text": userPrompt}]
-          }
-        ],
-        config: generationConfig  
+      Logger.step("Translation Service - Calling Gemini API", {
+        config: {
+          maxOutputTokens: generationConfig.maxOutputTokens,
+          temperature: generationConfig.temperature,
+          topP: generationConfig.topP
+        }
+      });
+
+      const translatedText = await withRetry(async () => {
+        const response = await ai.models.generateContent({
+          model: model,
+          contents: [
+            {
+              role: 'user',
+              parts: [{"text": userPrompt}]
+            }
+          ],
+          config: generationConfig  
+        });
+        
+        return response.text || '';
       });
       
       const duration = Date.now() - startTime;
-      const translatedText = response.text || '';
       
       Logger.step("Translation Service - Translation completed", {
         duration: duration,
@@ -100,6 +175,8 @@ export class TranslationService {
         error: error instanceof Error ? error.message : error
       });
       throw error;
+    } finally {
+      translationSemaphore.release();
     }
   }
 }
@@ -120,50 +197,61 @@ export class VideoGenerationService {
       outputGcsUri: outputGcsUri || "not configured"
     });
     
+    // 세마포어를 사용하여 동시 비디오 생성 요청 수 제한
+    await videoGenerationSemaphore.acquire();
+    
     try {
-      let operation = await ai.models.generateVideos({
-        model: model,
-        prompt: englishPrompt,
-        config: {
-          aspectRatio: '16:9',
-          numberOfVideos: 1,
-          durationSeconds: 8,
-          enhancePrompt: true,
-          generateAudio: false,
-          outputGcsUri: outputGcsUri,
-          personGeneration: PersonGeneration.ALLOW_ALL,
-        }
-      });
-
-      Logger.step("Video Generation Service - Operation started, waiting for completion", {
-        operationId: operation.name || 'unknown',
-        status: operation.done ? 'completed' : 'in-progress'
-      });
-
-      let checkCount = 0;
-      while (!operation.done) {
-        checkCount++;
-        Logger.debug("Video Generation Service - Checking operation status", {
-          checkCount,
-          operationId: operation.name || 'unknown'
+      const videos = await withRetry(async () => {
+        let operation = await ai.models.generateVideos({
+          model: model,
+          prompt: englishPrompt,
+          config: {
+            aspectRatio: '16:9',
+            numberOfVideos: 1,
+            durationSeconds: 8,
+            enhancePrompt: true,
+            generateAudio: false,
+            outputGcsUri: outputGcsUri,
+            personGeneration: PersonGeneration.ALLOW_ALL,
+          }
         });
-        
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        operation = await ai.operations.getVideosOperation({ operation: operation });
-      }
 
-      const videos = operation.response?.generatedVideos;
-      if (videos === undefined || videos.length === 0) {
-        throw new Error('No videos generated');
-      }
+        Logger.step("Video Generation Service - Operation started, waiting for completion", {
+          operationId: operation.name || 'unknown',
+          status: operation.done ? 'completed' : 'in-progress'
+        });
+
+        let checkCount = 0;
+        while (!operation.done) {
+          checkCount++;
+          Logger.debug("Video Generation Service - Checking operation status", {
+            checkCount,
+            operationId: operation.name || 'unknown'
+          });
+          
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          operation = await ai.operations.getVideosOperation({ operation: operation });
+        }
+
+        const videos = operation.response?.generatedVideos;
+        if (videos === undefined || videos.length === 0) {
+          throw new Error('No videos generated');
+        }
+
+        Logger.step("Video Generation Service - Video generation completed", {
+          videoCount: videos.length,
+          checksPerformed: checkCount,
+          firstVideo: videos[0] ? 'generated' : 'none'
+        });
+
+        return videos;
+      }, 2, 5000); // 최대 2회 재시도, 5초 간격
 
       const duration = Date.now() - startTime;
-      Logger.step("Video Generation Service - Video generation completed", {
+      Logger.step("Video Generation Service - Video generation workflow completed", {
         duration: duration,
         durationMs: `${duration}ms`,
-        videoCount: videos.length,
-        checksPerformed: checkCount,
-        firstVideo: videos[0] ? 'generated' : 'none'
+        videoCount: videos.length
       });
 
       return videos;
@@ -175,6 +263,8 @@ export class VideoGenerationService {
         error: error instanceof Error ? error.message : error
       });
       throw error;
+    } finally {
+      videoGenerationSemaphore.release();
     }
   }
 

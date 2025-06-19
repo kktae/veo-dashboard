@@ -320,4 +320,29 @@ export function getDatabase(): VideoDatabase {
   return dbInstance;
 }
 
+// Helper functions for convenience
+export function updateVideoRecord(id: string, updates: Partial<Omit<VideoRecord, 'id' | 'created_at'>>): VideoRecord | null {
+  return getDatabase().updateVideo(id, updates);
+}
+
+export function getVideoRecord(id: string): VideoRecord | null {
+  return getDatabase().getVideo(id);
+}
+
+export function insertVideoRecord(video: Omit<VideoRecord, 'created_at'> & { created_at?: string }): VideoRecord {
+  return getDatabase().insertVideo(video);
+}
+
+export function getVideoRecords(limit?: number, offset?: number): VideoRecord[] {
+  return getDatabase().getVideos(limit, offset);
+}
+
+export function deleteVideoRecord(id: string): boolean {
+  return getDatabase().deleteVideo(id);
+}
+
+export function clearAllVideoRecords(): number {
+  return getDatabase().clearAllVideos();
+}
+
 export { VideoDatabase }; 

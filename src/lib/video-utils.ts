@@ -6,6 +6,47 @@ import path from 'path';
 import fs from 'fs/promises';
 import { Logger } from './logger';
 
+// FFmpeg 동시 실행 제한을 위한 큐 시스템
+class VideoProcessingQueue {
+  private queue: Array<() => Promise<void>> = [];
+  private running = 0;
+  private readonly maxConcurrent = parseInt(process.env.MAX_CONCURRENT_FFMPEG_PROCESSES || '3');
+
+  async add<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          const result = await task();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+      this.process();
+    });
+  }
+
+  private async process() {
+    if (this.running >= this.maxConcurrent || this.queue.length === 0) {
+      return;
+    }
+
+    this.running++;
+    const task = this.queue.shift();
+    
+    if (task) {
+      try {
+        await task();
+      } finally {
+        this.running--;
+        this.process(); // 다음 작업 처리
+      }
+    }
+  }
+}
+
+const videoProcessingQueue = new VideoProcessingQueue();
+
 /**
  * Convert database VideoRecord to VideoGenerationResult
  */
@@ -123,42 +164,66 @@ export async function downloadAndProcessVideo(gcsUri: string, videoId: string): 
     await fs.mkdir(videosDir, { recursive: true });
     await fs.mkdir(thumbnailsDir, { recursive: true });
 
-    // Set up local file paths
+    // Set up local file paths with file locking consideration
     const localVideoPath = path.join(videosDir, `${videoId}.mp4`);
     const localThumbnailPath = path.join(thumbnailsDir, `${videoId}.jpg`);
+    const lockFilePath = path.join(videosDir, `${videoId}.lock`);
 
-    Logger.step('Video Utils - Downloading video from GCS', {
-      bucketName,
-      filePath,
-      localVideoPath
-    });
+    // Check if another process is already processing this video
+    try {
+      await fs.access(lockFilePath);
+      Logger.warn('Video Utils - Video is already being processed', { videoId });
+      throw new Error(`Video ${videoId} is already being processed`);
+    } catch {
+      // Lock file doesn't exist, continue processing
+    }
 
-    // Download video from GCS
-    await storage.bucket(bucketName).file(filePath).download({
-      destination: localVideoPath
-    });
+    // Create lock file
+    await fs.writeFile(lockFilePath, Date.now().toString());
 
-    Logger.step('Video Utils - Video download completed, generating thumbnail', {
-      videoId,
-      videoSize: (await fs.stat(localVideoPath)).size
-    });
+    try {
+      Logger.step('Video Utils - Downloading video from GCS', {
+        bucketName,
+        filePath,
+        localVideoPath
+      });
 
-    // Generate thumbnail and get video metadata
-    const metadata = await generateThumbnailAndMetadata(localVideoPath, localThumbnailPath, videoId);
+      // Download video from GCS
+      await storage.bucket(bucketName).file(filePath).download({
+        destination: localVideoPath
+      });
 
-    const result = {
-      videoUrl: `/videos/${videoId}.mp4`,
-      thumbnailUrl: `/thumbnails/${videoId}.jpg`,
-      duration: metadata.duration,
-      resolution: metadata.resolution
-    };
+      Logger.step('Video Utils - Video download completed, generating thumbnail', {
+        videoId,
+        videoSize: (await fs.stat(localVideoPath)).size
+      });
 
-    Logger.step('Video Utils - Video processing completed successfully', {
-      videoId,
-      ...result
-    });
+      // Generate thumbnail and get video metadata using queue system
+      const metadata = await videoProcessingQueue.add(() => 
+        generateThumbnailAndMetadata(localVideoPath, localThumbnailPath, videoId)
+      );
 
-    return result;
+      const result = {
+        videoUrl: `/videos/${videoId}.mp4`,
+        thumbnailUrl: `/thumbnails/${videoId}.jpg`,
+        duration: metadata.duration,
+        resolution: metadata.resolution
+      };
+
+      Logger.step('Video Utils - Video processing completed successfully', {
+        videoId,
+        ...result
+      });
+
+      return result;
+    } finally {
+      // Remove lock file
+      try {
+        await fs.unlink(lockFilePath);
+      } catch {
+        // Ignore errors when removing lock file
+      }
+    }
   } catch (error) {
     Logger.error('Video Utils - Video processing failed', {
       videoId,
@@ -191,7 +256,7 @@ async function generateThumbnailAndMetadata(
         folder: path.dirname(thumbnailPath),
         size: '1920x1080'
       })
-      .on('end', () => {
+      .on('end', async () => {
         Logger.step('Video Utils - Thumbnail generation completed', {
           videoId,
           thumbnailPath: path.basename(thumbnailPath)

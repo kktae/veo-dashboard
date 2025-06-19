@@ -11,6 +11,7 @@ import { Download, Play, Clock, CheckCircle, XCircle, Loader2, Image as ImageIco
 import { formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { VideoPlayerModal } from './video-player-modal';
+import { Progress } from "@/components/ui/progress";
 
 interface VideoResultCardProps {
   result: VideoGenerationResult;
@@ -18,19 +19,28 @@ interface VideoResultCardProps {
   onToggleSelection?: (videoId: string) => void;
 }
 
-const statusConfig = {
-  pending: { label: '대기중', icon: Clock, color: 'bg-gray-500' },
-  translating: { label: '번역중', icon: Loader2, color: 'bg-blue-500' },
-  generating: { label: '생성중', icon: Loader2, color: 'bg-yellow-500' },
-  processing: { label: '처리중', icon: Loader2, color: 'bg-purple-500' },
-  completed: { label: '완료', icon: CheckCircle, color: 'bg-green-500' },
-  error: { label: '오류', icon: XCircle, color: 'bg-red-500' },
+const getStatusInfo = (status: VideoGenerationResult['status']) => {
+  switch (status) {
+    case 'pending':
+      return { text: '대기 중', progress: 10, color: 'bg-gray-500' };
+    case 'translating':
+      return { text: '번역 중', progress: 25, color: 'bg-blue-500' };
+    case 'generating':
+      return { text: '영상 생성 중', progress: 50, color: 'bg-yellow-500' };
+    case 'processing':
+      return { text: '후처리 중', progress: 75, color: 'bg-orange-500' };
+    case 'completed':
+      return { text: '완료', progress: 100, color: 'bg-green-500' };
+    case 'error':
+      return { text: '오류', progress: 0, color: 'bg-red-500' };
+    default:
+      return { text: '알 수 없음', progress: 0, color: 'bg-gray-500' };
+  }
 };
 
 export function VideoResultCard({ result, isSelected = false, onToggleSelection }: VideoResultCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const config = statusConfig[result.status];
-  const StatusIcon = config.icon;
+  const statusInfo = getStatusInfo(result.status);
 
   const handleDownload = () => {
     if (result.videoUrl) {
@@ -96,16 +106,16 @@ export function VideoResultCard({ result, isSelected = false, onToggleSelection 
                 )}
               </div>
             </div>
-            <Badge variant="secondary" className={`${config.color} text-white flex-shrink-0`}>
-              <StatusIcon 
-                className={`mr-1 h-3 w-3 ${
-                  result.status === 'translating' || result.status === 'generating' || result.status === 'processing'
-                    ? 'animate-spin' 
-                    : ''
-                }`} 
-              />
-              {config.label}
-            </Badge>
+            <div className="space-y-2">
+              <Badge variant={statusInfo.color === 'bg-green-500' ? 'default' : 'secondary'}>
+                {statusInfo.text}
+              </Badge>
+              {result.status !== 'completed' && result.status !== 'error' && (
+                <span className="text-sm text-gray-500">
+                  새로고침해도 진행상태가 유지됩니다
+                </span>
+              )}
+            </div>
           </div>
         </CardHeader>
         

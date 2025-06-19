@@ -1,9 +1,6 @@
 services:
   # Main application service
   veo-dashboard:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
     image: veo-dashboard:latest
     container_name: veo-dashboard-app
     ports:
@@ -24,15 +21,20 @@ services:
       - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI:-true}
       - GOOGLE_CLOUD_OUTPUT_GCS_URI=${GOOGLE_CLOUD_OUTPUT_GCS_URI}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/application_default_credentials.json
+      
+      # Concurrency settings
+      - MAX_CONCURRENT_TRANSLATIONS=${MAX_CONCURRENT_TRANSLATIONS:-5}
+      - MAX_CONCURRENT_VIDEO_GENERATIONS=${MAX_CONCURRENT_VIDEO_GENERATIONS:-2}
+      - MAX_CONCURRENT_FFMPEG_PROCESSES=${MAX_CONCURRENT_FFMPEG_PROCESSES:-3}
     volumes:
       # SQLite database persistence (Named volume for better management)
-      - veo-database:/app/data
+      - ./data:/app/data
       # Video storage (Named volume with host backup)
-      - veo-videos:/app/public/videos
+      - ./public/videos:/app/public/videos
       # Thumbnail storage (Named volume with host backup)
-      - veo-thumbnails:/app/public/thumbnails
-      # Google Cloud credentials (read-only)
-      - $HOME/.config/gcloud:/app/credentials:ro
+      - ./public/thumbnails:/app/public/thumbnails
+      # Google Cloud credentials
+      - ./credentials/application_default_credentials.json:/app/credentials/application_default_credentials.json
       # Optional: Host folder backup for data (uncomment if needed)
       # - ./data:/app/data-backup
       # - ./public/videos:/app/public/videos-backup  
@@ -93,7 +95,7 @@ services:
   #   restart: unless-stopped
 
 volumes:
-  # Main application data volumes
+  # Main application data volumes with proper permissions
   veo-database:
     driver: local
     driver_opts:
