@@ -103,8 +103,8 @@ bun run dev
 ### 1. 이미지 빌드
 ```bash
 # 빌드 스크립트 실행
-chmod +x dockerbuild.sh
-./dockerbuild.sh
+chmod +x docker-build.sh
+./docker-build.sh
 
 # 또는 직접 빌드
 docker build -t localhost/veo-dashboard:latest .
