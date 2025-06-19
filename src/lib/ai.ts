@@ -10,40 +10,6 @@ const ai = new GoogleGenAI({
   location: process.env.GOOGLE_CLOUD_LOCATION,
 });
 
-// AI API 호출 제한을 위한 세마포어 클래스
-class Semaphore {
-  private queue: Array<() => void> = [];
-  private running = 0;
-
-  constructor(private maxConcurrent: number) {}
-
-  async acquire(): Promise<void> {
-    return new Promise((resolve) => {
-      if (this.running < this.maxConcurrent) {
-        this.running++;
-        resolve();
-      } else {
-        this.queue.push(() => {
-          this.running++;
-          resolve();
-        });
-      }
-    });
-  }
-
-  release(): void {
-    this.running--;
-    if (this.queue.length > 0) {
-      const next = this.queue.shift();
-      if (next) next();
-    }
-  }
-}
-
-// 번역 API와 비디오 생성 API에 대한 세마포어
-const translationSemaphore = new Semaphore(API_CONFIG.MAX_CONCURRENT_TRANSLATIONS);
-const videoGenerationSemaphore = new Semaphore(API_CONFIG.MAX_CONCURRENT_VIDEO_GENERATIONS);
-
 // Common generation config
 const getBaseGenerationConfig = (customConfig?: Partial<GenerateContentConfig>): GenerateContentConfig => ({
   maxOutputTokens: 1024,
@@ -102,9 +68,6 @@ export class TranslationService {
       }
     });
 
-    // 세마포어를 사용하여 동시 번역 요청 수 제한
-    await translationSemaphore.acquire();
-    
     try {
       Logger.step("Translation Service - Calling Gemini API", {
         config: {
@@ -147,8 +110,6 @@ export class TranslationService {
         error: error instanceof Error ? error.message : error
       });
       throw error;
-    } finally {
-      translationSemaphore.release();
     }
   }
 }
@@ -168,9 +129,6 @@ export class VideoGenerationService {
       promptPreview: englishPrompt.substring(0, 100) + "...",
       outputGcsUri: outputGcsUri || "not configured"
     });
-    
-    // 세마포어를 사용하여 동시 비디오 생성 요청 수 제한
-    await videoGenerationSemaphore.acquire();
     
     try {
       Logger.step("Video Generation Service - Calling Veo API", {
@@ -215,14 +173,8 @@ export class VideoGenerationService {
           throw new Error('No videos generated');
         }
 
-        Logger.step("Video Generation Service - Video generation completed", {
-          videoCount: videos.length,
-          checksPerformed: checkCount,
-          firstVideo: videos[0] ? 'generated' : 'none'
-        });
-
         return videos;
-      }, API_CONFIG.MAX_RETRIES, API_CONFIG.RETRY_BASE_DELAY, 'Video generation API call');
+      }, API_CONFIG.MAX_RETRIES, API_CONFIG.RETRY_BASE_DELAY, 'Video Generation API call');
       
       const duration = Date.now() - startTime;
       
@@ -230,7 +182,7 @@ export class VideoGenerationService {
         duration: duration,
         durationMs: `${duration}ms`,
         videosGenerated: videos.length,
-        hasOutputUri: !!outputGcsUri
+        firstVideo: videos[0] ? 'generated' : 'none'
       });
       
       return videos;
@@ -242,8 +194,6 @@ export class VideoGenerationService {
         error: error instanceof Error ? error.message : error
       });
       throw error;
-    } finally {
-      videoGenerationSemaphore.release();
     }
   }
   

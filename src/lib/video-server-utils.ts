@@ -4,47 +4,6 @@ import path from 'path';
 import fs from 'fs/promises';
 import { Logger } from './logger';
 
-// FFmpeg 동시 실행 제한을 위한 큐 시스템
-class VideoProcessingQueue {
-  private queue: Array<() => Promise<void>> = [];
-  private running = 0;
-  private readonly maxConcurrent = parseInt(process.env.MAX_CONCURRENT_FFMPEG_PROCESSES || '3');
-
-  async add<T>(task: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
-          const result = await task();
-          resolve(result);
-        } catch (error) {
-          reject(error);
-        }
-      });
-      this.process();
-    });
-  }
-
-  private async process() {
-    if (this.running >= this.maxConcurrent || this.queue.length === 0) {
-      return;
-    }
-
-    this.running++;
-    const task = this.queue.shift();
-    
-    if (task) {
-      try {
-        await task();
-      } finally {
-        this.running--;
-        this.process(); // 다음 작업 처리
-      }
-    }
-  }
-}
-
-const videoProcessingQueue = new VideoProcessingQueue();
-
 /**
  * Initialize and verify Google Cloud Storage client
  */
@@ -197,9 +156,7 @@ export async function downloadAndProcessVideo(gcsUri: string, videoId: string): 
     Logger.step('Video Utils - Video downloaded, generating thumbnail', { videoId, videoPath });
 
     // Generate thumbnail and extract metadata using FFmpeg
-    const metadata = await videoProcessingQueue.add(() => 
-      generateThumbnailAndMetadata(videoPath, thumbnailPath, videoId)
-    );
+    const metadata = await generateThumbnailAndMetadata(videoPath, thumbnailPath, videoId);
 
     // Verify thumbnail was created
     try {
