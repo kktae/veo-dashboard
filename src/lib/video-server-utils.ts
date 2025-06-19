@@ -316,6 +316,77 @@ export async function downloadAndProcessVideo(gcsUri: string, videoId: string): 
 }
 
 /**
+ * Extract video metadata using ffprobe
+ */
+async function extractVideoMetadata(videoPath: string, videoId: string): Promise<{ duration?: number; resolution?: string }> {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) {
+        Logger.error('Video Utils - ffprobe error', {
+          videoId,
+          videoPath,
+          error: err.message
+        });
+        reject(new Error(`Failed to extract metadata: ${err.message}`));
+        return;
+      }
+
+      let duration: number | undefined;
+      let resolution: string | undefined;
+
+      try {
+        // Extract duration
+        if (metadata.format && metadata.format.duration) {
+          duration = typeof metadata.format.duration === 'string' 
+            ? parseFloat(metadata.format.duration)
+            : metadata.format.duration;
+        }
+
+        // Extract resolution from video stream
+        if (metadata.streams) {
+          const videoStream = metadata.streams.find(stream => stream.codec_type === 'video');
+          if (videoStream && videoStream.width && videoStream.height) {
+            // Validate that width and height are actual numbers
+            const width = Number(videoStream.width);
+            const height = Number(videoStream.height);
+            
+            if (Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0) {
+              resolution = `${width}x${height}`;
+            } else {
+              Logger.warn('Video Utils - Invalid resolution values detected', {
+                videoId,
+                rawWidth: videoStream.width,
+                rawHeight: videoStream.height,
+                parsedWidth: width,
+                parsedHeight: height
+              });
+            }
+          }
+        }
+
+        Logger.step('Video Utils - Metadata extracted', {
+          videoId,
+          duration,
+          resolution,
+          format: metadata.format?.format_name,
+          bitrate: metadata.format?.bit_rate
+        });
+
+        resolve({ duration, resolution });
+
+      } catch (parseError) {
+        Logger.error('Video Utils - Failed to parse metadata', {
+          videoId,
+          error: parseError instanceof Error ? parseError.message : parseError,
+          rawMetadata: JSON.stringify(metadata, null, 2)
+        });
+        resolve({ duration: undefined, resolution: undefined });
+      }
+    });
+  });
+}
+
+/**
  * Generate thumbnail and extract metadata using FFmpeg
  */
 async function generateThumbnailAndMetadata(
@@ -323,71 +394,42 @@ async function generateThumbnailAndMetadata(
   thumbnailPath: string, 
   videoId: string
 ): Promise<{ duration?: number; resolution?: string }> {
-  return new Promise(async (resolve, reject) => {
-    let duration: number | undefined;
-    let resolution: string | undefined;
-
-    try {
-      // Verify video file exists before processing
-      await fs.access(videoPath);
-      const stats = await fs.stat(videoPath);
-      
-      if (stats.size === 0) {
-        throw new Error('Video file is empty');
-      }
-      
-      Logger.step('Video Utils - Starting FFmpeg processing', { 
-        videoId, 
-        videoPath,
-        fileSize: stats.size
-      });
-      
-    } catch (accessError) {
-      Logger.error('Video Utils - Video file not accessible for FFmpeg processing', {
-        videoId,
-        videoPath,
-        error: accessError instanceof Error ? accessError.message : accessError
-      });
-      reject(new Error(`Video file not accessible: ${videoPath}`));
-      return;
+  try {
+    // Verify video file exists before processing
+    await fs.access(videoPath);
+    const stats = await fs.stat(videoPath);
+    
+    if (stats.size === 0) {
+      throw new Error('Video file is empty');
     }
+    
+    Logger.step('Video Utils - Starting FFmpeg processing', { 
+      videoId, 
+      videoPath,
+      fileSize: stats.size
+    });
+    
+  } catch (accessError) {
+    Logger.error('Video Utils - Video file not accessible for FFmpeg processing', {
+      videoId,
+      videoPath,
+      error: accessError instanceof Error ? accessError.message : accessError
+    });
+    throw new Error(`Video file not accessible: ${videoPath}`);
+  }
 
+  // First, extract metadata using ffprobe
+  const metadata = await extractVideoMetadata(videoPath, videoId);
+
+  // Then generate thumbnail
+  return new Promise((resolve, reject) => {
     const command = ffmpeg(videoPath)
       .on('start', (commandLine) => {
-        Logger.step('Video Utils - FFmpeg started', { videoId, command: commandLine });
-      })
-      .on('codecData', (data) => {
-        Logger.step('Video Utils - FFmpeg codec data', { 
-          videoId, 
-          duration: data.duration,
-          format: data.format,
-          video: data.video,
-          audio: data.audio
-        });
-        
-        // Parse duration
-        if (data.duration) {
-          const parts = data.duration.split(':');
-          if (parts.length === 3) {
-            const hours = parseInt(parts[0]);
-            const minutes = parseInt(parts[1]);
-            const seconds = parseFloat(parts[2]);
-            duration = hours * 3600 + minutes * 60 + seconds;
-          }
-        }
-
-        // Parse resolution
-        if (data.video) {
-          const videoInfo = data.video.split(',')[0];
-          const resolutionMatch = videoInfo.match(/(\d+)x(\d+)/);
-          if (resolutionMatch) {
-            resolution = `${resolutionMatch[1]}x${resolutionMatch[2]}`;
-          }
-        }
+        Logger.step('Video Utils - FFmpeg thumbnail generation started', { videoId, command: commandLine });
       })
       .on('progress', (progress) => {
         if (progress.percent) {
-          Logger.step('Video Utils - FFmpeg progress', { 
+          Logger.step('Video Utils - FFmpeg thumbnail progress', { 
             videoId, 
             percent: Math.round(progress.percent),
             timemark: progress.timemark
@@ -400,14 +442,14 @@ async function generateThumbnailAndMetadata(
           await fs.access(thumbnailPath);
           const thumbnailStats = await fs.stat(thumbnailPath);
           
-          Logger.step('Video Utils - FFmpeg processing finished', { 
+          Logger.step('Video Utils - FFmpeg thumbnail generation finished', { 
             videoId,
-            duration,
-            resolution,
+            duration: metadata.duration,
+            resolution: metadata.resolution,
             thumbnailSize: thumbnailStats.size
           });
           
-          resolve({ duration, resolution });
+          resolve(metadata);
         } catch (thumbnailError) {
           Logger.warn('Video Utils - Thumbnail file not created or accessible', {
             videoId,
@@ -415,18 +457,18 @@ async function generateThumbnailAndMetadata(
             error: thumbnailError instanceof Error ? thumbnailError.message : thumbnailError
           });
           // Resolve anyway since video processing succeeded
-          resolve({ duration, resolution });
+          resolve(metadata);
         }
       })
       .on('error', (err) => {
-        Logger.error('Video Utils - FFmpeg error', { 
+        Logger.error('Video Utils - FFmpeg thumbnail generation error', { 
           videoId,
           videoPath,
           thumbnailPath,
           error: err.message,
           stack: err.stack
         });
-        reject(new Error(`FFmpeg processing failed: ${err.message}`));
+        reject(new Error(`FFmpeg thumbnail generation failed: ${err.message}`));
       })
       .screenshots({
         timestamps: ['50%'],
@@ -437,9 +479,9 @@ async function generateThumbnailAndMetadata(
 
     // Set a timeout for FFmpeg processing
     const timeout = setTimeout(() => {
-      Logger.error('Video Utils - FFmpeg processing timeout', { videoId, videoPath });
+      Logger.error('Video Utils - FFmpeg thumbnail generation timeout', { videoId, videoPath });
       command.kill('SIGKILL');
-      reject(new Error('FFmpeg processing timeout'));
+      reject(new Error('FFmpeg thumbnail generation timeout'));
     }, 300000); // 5 minutes timeout
 
     command.on('end', () => clearTimeout(timeout));

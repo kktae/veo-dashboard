@@ -552,9 +552,9 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
             {video.duration && (
               <span>길이: {video.duration}초</span>
             )}
-            {video.resolution && (
-              <span>해상도: {video.resolution}</span>
-            )}
+                          {video.resolution && video.resolution.match(/^\d+x\d+$/) && (
+                <span>해상도: {video.resolution}</span>
+              )}
             <span>
               생성일: {video.createdAt.toLocaleDateString('ko-KR')}
             </span>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { VideoGenerationService } from '@/lib/ai';
 import { Logger } from '@/lib/logger';
 import { updateVideoRecord } from '@/lib/database';
+import { validateResolution } from '@/lib/video-utils';
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -124,13 +125,22 @@ async function processVideoGeneration(videoId: string, englishPrompt: string, mo
     const processResult = await processResponse.json();
     const duration = Date.now() - startTime;
 
-    // Update with final results
+    // Update with final results (해상도 값 검증 후 저장)
+    const validResolution = validateResolution(processResult.resolution, videoId);
+    
+    if (processResult.resolution && !validResolution) {
+      Logger.warn('Invalid resolution from video processing, not saving to DB', {
+        videoId,
+        invalidResolution: processResult.resolution
+      });
+    }
+    
     await updateVideoRecord(videoId, {
       status: 'completed',
       video_url: processResult.videoUrl,
       thumbnail_url: processResult.thumbnailUrl,
       duration: processResult.duration || 8,
-      resolution: processResult.resolution || '1920x1080',
+      resolution: validResolution, // 검증된 해상도만 저장
       completed_at: new Date().toISOString(),
     });
 

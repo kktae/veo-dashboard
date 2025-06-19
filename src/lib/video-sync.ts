@@ -1,6 +1,7 @@
 import { Storage } from '@google-cloud/storage';
 import { getDatabase } from './database';
 import { downloadAndProcessVideo } from './video-server-utils';
+import { validateResolution } from './video-utils';
 import { Logger } from './logger';
 import path from 'path';
 import fs from 'fs/promises';
@@ -146,13 +147,22 @@ class VideoSyncService {
       // 기존 video-utils의 다운로드 및 처리 함수 활용
       const result = await downloadAndProcessVideo(gcsUri, videoId);
 
-      // DB 업데이트
+      // DB 업데이트 (해상도 값 검증 후 저장)
       const db = await getDatabase();
+      const validResolution = validateResolution(result.resolution, videoId);
+      
+      if (result.resolution && !validResolution) {
+        Logger.warn('Video Sync Service - Invalid resolution detected, not saving to DB', {
+          videoId,
+          invalidResolution: result.resolution
+        });
+      }
+      
       await db.updateVideo(videoId, {
         video_url: result.videoUrl,
         thumbnail_url: result.thumbnailUrl,
         duration: result.duration,
-        resolution: result.resolution
+        resolution: validResolution
       });
 
       // 성공 상태로 업데이트

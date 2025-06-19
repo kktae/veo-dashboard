@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { downloadAndProcessVideo } from '@/lib/video-server-utils';
 import { updateVideoRecord } from '@/lib/database';
 import { syncNewVideo } from '@/lib/video-sync';
+import { validateResolution } from '@/lib/video-utils';
 import { Logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
@@ -31,14 +32,24 @@ export async function POST(request: NextRequest) {
 
     const result = await downloadAndProcessVideo(gcsUri, videoId);
 
-    // Update database with GCS URI and processing results
+    // Update database with GCS URI and processing results (해상도 값 검증 후 저장)
     Logger.step('Updating database with GCS URI and processing results', { videoId });
+    
+    const validResolution = validateResolution(result.resolution, videoId);
+    
+    if (result.resolution && !validResolution) {
+      Logger.warn('Invalid resolution from video processing result, not saving to DB', {
+        videoId,
+        invalidResolution: result.resolution
+      });
+    }
+    
     await updateVideoRecord(videoId, {
       gcs_uri: gcsUri,
       video_url: result.videoUrl,
       thumbnail_url: result.thumbnailUrl,
       duration: result.duration,
-      resolution: result.resolution,
+      resolution: validResolution, // 검증된 해상도만 저장
       status: 'completed',
       completed_at: new Date().toISOString()
     });

@@ -1,4 +1,5 @@
 import { VideoGenerationResult } from '@/types';
+import { isValidResolution } from '@/lib/video-utils';
 import { Clock, Monitor } from 'lucide-react';
 
 interface VideoMetadataProps {
@@ -7,7 +8,9 @@ interface VideoMetadataProps {
 }
 
 export function VideoMetadata({ result, className = '' }: VideoMetadataProps) {
-  if (!result.duration && !result.resolution) {
+  const validResolution = isValidResolution(result.resolution) ? result.resolution : undefined;
+  
+  if (!result.duration && !validResolution) {
     return null;
   }
 
@@ -19,10 +22,10 @@ export function VideoMetadata({ result, className = '' }: VideoMetadataProps) {
           {result.duration}초
         </span>
       )}
-      {result.resolution && (
+      {validResolution && (
         <span className="bg-black/80 text-white px-2 py-1 rounded flex items-center gap-1">
           <Monitor className="h-3 w-3" />
-          {result.resolution}
+          {validResolution}
         </span>
       )}
     </div>

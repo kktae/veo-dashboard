@@ -135,4 +135,31 @@ export function createUpdateFromResult(
   return update;
 }
 
+/**
+ * 유효한 해상도 형식인지 검증 (예: "1920x1080")
+ */
+export function isValidResolution(resolution: string | undefined | null): boolean {
+  if (!resolution) return false;
+  const resolutionPattern = /^\d+x\d+$/;
+  return resolutionPattern.test(resolution);
+}
+
+/**
+ * 해상도 값을 검증하고 유효한 값만 반환
+ */
+export function validateResolution(resolution: string | undefined | null, videoId?: string): string | undefined {
+  if (!resolution) return undefined;
+  
+  if (isValidResolution(resolution)) {
+    return resolution;
+  }
+  
+  // 로그 출력 (videoId가 있는 경우에만)
+  if (videoId && console && console.warn) {
+    console.warn(`Invalid resolution format detected for video ${videoId}: ${resolution}`);
+  }
+  
+  return undefined;
+}
+
  
