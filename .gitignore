@@ -48,3 +48,6 @@ next-env.d.ts
 veo-meta**
 
 credentials/
+
+migration_commands.sh
+migration_with_data.sql

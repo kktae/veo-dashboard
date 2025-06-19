@@ -29,8 +29,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update database status to generating
-    await updateVideoRecord(videoId, { status: 'generating' });
+    // Update database status to generating and save english prompt
+    await updateVideoRecord(videoId, { 
+      status: 'generating',
+      english_prompt: englishPrompt
+    });
 
     // Return immediately with job ID
     const response = NextResponse.json({ 

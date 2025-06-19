@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { downloadAndProcessVideo } from '@/lib/video-utils';
+import { downloadAndProcessVideo } from '@/lib/video-server-utils';
 import { updateVideoRecord } from '@/lib/database';
 import { syncNewVideo } from '@/lib/video-sync';
 import { Logger } from '@/lib/logger';

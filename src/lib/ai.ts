@@ -1,6 +1,8 @@
 import { GenerateContentConfig, GoogleGenAI, HarmCategory, HarmBlockThreshold, PersonGeneration } from '@google/genai';
 import { Logger } from './logger';
 import { TranslationPromptConfig } from '@/types';
+import { API_CONFIG } from './constants';
+import { withRetry } from './api-utils';
 
 const ai = new GoogleGenAI({
   vertexai: process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true',
@@ -38,44 +40,35 @@ class Semaphore {
   }
 }
 
-// 번역 API와 비디오 생성 API에 대한 세마포어 (환경 변수로 설정 가능)
-const MAX_CONCURRENT_TRANSLATIONS = parseInt(process.env.MAX_CONCURRENT_TRANSLATIONS || '5');
-const MAX_CONCURRENT_VIDEO_GENERATIONS = parseInt(process.env.MAX_CONCURRENT_VIDEO_GENERATIONS || '2');
+// 번역 API와 비디오 생성 API에 대한 세마포어
+const translationSemaphore = new Semaphore(API_CONFIG.MAX_CONCURRENT_TRANSLATIONS);
+const videoGenerationSemaphore = new Semaphore(API_CONFIG.MAX_CONCURRENT_VIDEO_GENERATIONS);
 
-const translationSemaphore = new Semaphore(MAX_CONCURRENT_TRANSLATIONS);
-const videoGenerationSemaphore = new Semaphore(MAX_CONCURRENT_VIDEO_GENERATIONS);
-
-// 재시도 로직을 위한 헬퍼 함수
-async function withRetry<T>(
-  operation: () => Promise<T>,
-  maxRetries: number = 3,
-  delayMs: number = 1000
-): Promise<T> {
-  let lastError: Error;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      
-      if (attempt === maxRetries) {
-        throw lastError;
-      }
-      
-      Logger.warn(`API call failed, retrying in ${delayMs}ms`, {
-        attempt,
-        maxRetries,
-        error: lastError.message
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      delayMs *= 2; // 지수 백오프
+// Common generation config
+const getBaseGenerationConfig = (customConfig?: Partial<GenerateContentConfig>): GenerateContentConfig => ({
+  maxOutputTokens: 1024,
+  temperature: 0.4,
+  topP: 0.95,
+  safetySettings: [
+    {
+      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+      threshold: HarmBlockThreshold.OFF,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: HarmBlockThreshold.OFF,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+      threshold: HarmBlockThreshold.OFF,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+      threshold: HarmBlockThreshold.OFF,
     }
-  }
-  
-  throw lastError!;
-}
+  ],
+  ...customConfig
+});
 
 export class TranslationService {
   static async translateKoreanToEnglish(
@@ -103,32 +96,11 @@ export class TranslationService {
       userPromptTemplate: config.userPromptTemplate.substring(0, 50) + "..."
     });
     
-    const generationConfig: GenerateContentConfig = {
-      maxOutputTokens: 1024,
-      temperature: 0.4,
-      topP: 0.95,
-      safetySettings: [
-        {
-          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-          threshold: HarmBlockThreshold.OFF,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-          threshold: HarmBlockThreshold.OFF,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-          threshold: HarmBlockThreshold.OFF,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-          threshold: HarmBlockThreshold.OFF,
-        }
-      ],
+    const generationConfig = getBaseGenerationConfig({
       systemInstruction: {
         parts: [{"text": config.systemInstruction}]
-      },
-    };
+      }
+    });
 
     // 세마포어를 사용하여 동시 번역 요청 수 제한
     await translationSemaphore.acquire();
@@ -155,7 +127,7 @@ export class TranslationService {
         });
         
         return response.text || '';
-      });
+      }, API_CONFIG.MAX_RETRIES, 1000, 'Translation API call');
       
       const duration = Date.now() - startTime;
       
@@ -201,6 +173,11 @@ export class VideoGenerationService {
     await videoGenerationSemaphore.acquire();
     
     try {
+      Logger.step("Video Generation Service - Calling Veo API", {
+        prompt: englishPrompt.substring(0, 100) + "...",
+        model
+      });
+
       const videos = await withRetry(async () => {
         let operation = await ai.models.generateVideos({
           model: model,
@@ -245,15 +222,17 @@ export class VideoGenerationService {
         });
 
         return videos;
-      }, 2, 5000); // 최대 2회 재시도, 5초 간격
-
+      }, API_CONFIG.MAX_RETRIES, API_CONFIG.RETRY_BASE_DELAY, 'Video generation API call');
+      
       const duration = Date.now() - startTime;
-      Logger.step("Video Generation Service - Video generation workflow completed", {
+      
+      Logger.step("Video Generation Service - Video generation completed", {
         duration: duration,
         durationMs: `${duration}ms`,
-        videoCount: videos.length
+        videosGenerated: videos.length,
+        hasOutputUri: !!outputGcsUri
       });
-
+      
       return videos;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -267,26 +246,32 @@ export class VideoGenerationService {
       videoGenerationSemaphore.release();
     }
   }
-
+  
   static async downloadVideo(video: any, downloadPath: string) {
-    Logger.step("Video Generation Service - Starting video download", {
+    const startTime = Date.now();
+    
+    Logger.step("Video Generation Service - Downloading video", {
       downloadPath,
-      videoInfo: video ? 'available' : 'unavailable'
+      hasVideo: !!video
     });
     
     try {
-      const result = await ai.files.download({
-        file: video,
-        downloadPath: downloadPath,
-      });
+      await withRetry(async () => {
+        await video.download(downloadPath);
+      }, API_CONFIG.MAX_RETRIES, 2000, 'Video download');
       
+      const duration = Date.now() - startTime;
       Logger.step("Video Generation Service - Video download completed", {
+        duration: duration,
+        durationMs: `${duration}ms`,
         downloadPath
       });
       
-      return result;
     } catch (error) {
+      const duration = Date.now() - startTime;
       Logger.error("Video Generation Service - Video download failed", {
+        duration: duration,
+        durationMs: `${duration}ms`,
         downloadPath,
         error: error instanceof Error ? error.message : error
       });

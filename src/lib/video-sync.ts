@@ -1,6 +1,6 @@
 import { Storage } from '@google-cloud/storage';
 import { getDatabase } from './database';
-import { downloadAndProcessVideo } from './video-utils';
+import { downloadAndProcessVideo } from './video-server-utils';
 import { Logger } from './logger';
 import path from 'path';
 import fs from 'fs/promises';

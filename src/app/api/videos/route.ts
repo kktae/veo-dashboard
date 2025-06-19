@@ -130,6 +130,54 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// PATCH /api/videos - Update video record
+export async function PATCH(request: NextRequest) {
+  const startTime = Date.now();
+  const route = '/api/videos';
+  
+  try {
+    const body = await request.json();
+    const { id, ...updates } = body;
+
+    Logger.apiStart(route, { 
+      id, 
+      updateFields: Object.keys(updates)
+    });
+
+    if (!id) {
+      Logger.warn('Video update request missing ID', { route });
+      return NextResponse.json(
+        { error: 'Video ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const db = await getDatabase();
+    const videoRecord = await db.updateVideo(id, updates);
+
+    if (!videoRecord) {
+      Logger.warn('Video record not found for update', { route, id });
+      return NextResponse.json(
+        { error: 'Video not found' },
+        { status: 404 }
+      );
+    }
+
+    const duration = Date.now() - startTime;
+    Logger.apiSuccess(route, duration, { id: videoRecord.id });
+
+    return NextResponse.json(videoRecord);
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    Logger.apiError(route, duration, error);
+    
+    return NextResponse.json(
+      { error: 'Failed to update video record' },
+      { status: 500 }
+    );
+  }
+}
+
 // DELETE /api/videos - Clear all videos
 export async function DELETE(request: NextRequest) {
   const startTime = Date.now();

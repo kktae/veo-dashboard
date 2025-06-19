@@ -1,7 +1,127 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { VideoGenerationResult, VideoGenerationState, AIModelConfig } from '@/types';
 import { Logger } from '@/lib/logger';
+import { convertDatabaseRecordToResult } from '@/lib/video-utils';
+import { isProgressingStatus } from '@/lib/constants';
+import { API_CONFIG } from '@/lib/constants';
 import { v4 as uuidv4 } from 'uuid';
+
+// Custom hook for managing video API requests
+const useVideoApi = () => {
+  const fetchVideos = useCallback(async (): Promise<VideoGenerationResult[]> => {
+    const response = await fetch('/api/videos');
+    if (!response.ok) {
+      throw new Error(`Failed to fetch videos: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const videos = data.videos || [];
+    
+    return videos.map((video: any) => convertDatabaseRecordToResult(video));
+  }, []);
+
+  const createVideo = useCallback(async (videoData: {
+    id: string;
+    korean_prompt: string;
+    english_prompt: string;
+    status: string;
+  }) => {
+    const response = await fetch('/api/videos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(videoData),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Database save failed: ${response.status} - ${errorText}`);
+    }
+
+    return response.json();
+  }, []);
+
+     const deleteVideos = useCallback(async (videoIds: string[]) => {
+     const promises = videoIds.map(id => 
+       fetch(`/api/videos/${id}`, { method: 'DELETE' })
+     );
+     const responses = await Promise.all(promises);
+     
+     // Check if all deletions were successful
+     responses.forEach((response, index) => {
+       if (!response.ok) {
+         throw new Error(`Failed to delete video ${videoIds[index]}: ${response.status}`);
+       }
+     });
+   }, []);
+
+  const clearAllVideos = useCallback(async () => {
+    const response = await fetch('/api/videos', { method: 'DELETE' });
+    if (!response.ok) {
+      throw new Error('Failed to clear videos');
+    }
+    return response.json();
+  }, []);
+
+  return { fetchVideos, createVideo, deleteVideos, clearAllVideos };
+};
+
+// Custom hook for video polling
+const useVideoPolling = (
+  onUpdate: (videos: VideoGenerationResult[]) => void,
+  shouldPoll: boolean
+) => {
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const { fetchVideos } = useVideoApi();
+
+  const startPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const videos = await fetchVideos();
+        onUpdate(videos);
+        
+        // Stop polling if no videos are in progress
+        const hasProgressingVideos = videos.some(video => 
+          isProgressingStatus(video.status)
+        );
+        
+        if (!hasProgressingVideos && pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+          Logger.info('Client - Stopped polling, no videos in progress');
+        }
+      } catch (error) {
+        Logger.error('Client - Polling error', {
+          error: error instanceof Error ? error.message : error
+        });
+      }
+    }, API_CONFIG.POLLING_INTERVAL);
+
+    Logger.info('Client - Started polling for video status updates');
+  }, [fetchVideos, onUpdate]);
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (shouldPoll) {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+
+    return stopPolling;
+  }, [shouldPoll, startPolling, stopPolling]);
+
+  return { startPolling, stopPolling };
+};
 
 export function useVideoGeneration() {
   const [state, setState] = useState<VideoGenerationState>({
@@ -11,9 +131,22 @@ export function useVideoGeneration() {
     selectedIds: [],
   });
   
-  // Add separate state for initial loading
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const { fetchVideos, createVideo, deleteVideos, clearAllVideos } = useVideoApi();
+
+  // Handle video updates from polling
+  const handleVideoUpdate = useCallback((videos: VideoGenerationResult[]) => {
+    setState(prev => ({
+      ...prev,
+      results: videos
+    }));
+  }, []);
+
+  // Determine if polling should be active
+  const shouldPoll = state.results.some(result => isProgressingStatus(result.status));
+
+  // Use polling hook
+  useVideoPolling(handleVideoUpdate, shouldPoll);
 
   // Load existing videos from database on mount
   useEffect(() => {
@@ -22,45 +155,17 @@ export function useVideoGeneration() {
         setIsInitialLoading(true);
         Logger.info('Client - Loading videos from database');
         
-        const response = await fetch('/api/videos');
-        if (response.ok) {
-          const data = await response.json();
-          const videos = data.videos || [];
-          
-          // Convert database records to VideoGenerationResult format
-          const results: VideoGenerationResult[] = videos.map((video: any) => ({
-            id: video.id,
-            koreanPrompt: video.korean_prompt,
-            englishPrompt: video.english_prompt,
-            status: video.status,
-            videoUrl: video.video_url || undefined,
-            thumbnailUrl: video.thumbnail_url || undefined,
-            duration: video.duration || undefined,
-            resolution: video.resolution || undefined,
-            error: video.error_message || undefined,
-            createdAt: new Date(video.created_at),
-            completedAt: video.completed_at ? new Date(video.completed_at) : undefined,
-          }));
-          
-          setState(prev => ({
-            ...prev,
-            results: results
-          }));
-          
-          // Check if there are any videos in progress and start polling
-          const hasProgressingVideos = results.some(result => 
-            ['pending', 'translating', 'generating', 'processing'].includes(result.status)
-          );
-          
-          if (hasProgressingVideos) {
-            startPolling();
-          }
-          
-          Logger.info('Client - Videos loaded from database', { 
-            count: results.length,
-            progressingCount: results.filter(r => ['pending', 'translating', 'generating', 'processing'].includes(r.status)).length
-          });
-        }
+        const results = await fetchVideos();
+        
+        setState(prev => ({
+          ...prev,
+          results: results
+        }));
+        
+        Logger.info('Client - Videos loaded from database', { 
+          count: results.length,
+          progressingCount: results.filter(r => isProgressingStatus(r.status)).length
+        });
       } catch (error) {
         Logger.error('Client - Failed to load videos from database', {
           error: error instanceof Error ? error.message : error
@@ -71,67 +176,7 @@ export function useVideoGeneration() {
     };
 
     loadVideos();
-
-    // Cleanup polling on unmount
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, []);
-
-  // Polling function to check status of progressing videos
-  const startPolling = useCallback(() => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-    }
-
-    pollingIntervalRef.current = setInterval(async () => {
-      try {
-        const response = await fetch('/api/videos');
-        if (response.ok) {
-          const data = await response.json();
-          const videos = data.videos || [];
-          
-          const results: VideoGenerationResult[] = videos.map((video: any) => ({
-            id: video.id,
-            koreanPrompt: video.korean_prompt,
-            englishPrompt: video.english_prompt,
-            status: video.status,
-            videoUrl: video.video_url || undefined,
-            thumbnailUrl: video.thumbnail_url || undefined,
-            duration: video.duration || undefined,
-            resolution: video.resolution || undefined,
-            error: video.error_message || undefined,
-            createdAt: new Date(video.created_at),
-            completedAt: video.completed_at ? new Date(video.completed_at) : undefined,
-          }));
-          
-          setState(prev => ({
-            ...prev,
-            results: results
-          }));
-          
-          // Stop polling if no videos are in progress
-          const hasProgressingVideos = results.some(result => 
-            ['pending', 'translating', 'generating', 'processing'].includes(result.status)
-          );
-          
-          if (!hasProgressingVideos && pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
-            Logger.info('Client - Stopped polling, no videos in progress');
-          }
-        }
-      } catch (error) {
-        Logger.error('Client - Polling error', {
-          error: error instanceof Error ? error.message : error
-        });
-      }
-    }, 3000); // Poll every 3 seconds
-
-    Logger.info('Client - Started polling for video status updates');
-  }, []);
+  }, [fetchVideos]);
 
   const generateVideo = useCallback(async (koreanPrompt: string, config: AIModelConfig) => {
     const startTime = Date.now();
@@ -154,71 +199,30 @@ export function useVideoGeneration() {
       createdAt: new Date(),
     };
 
-    // Save initial record to database
-    try {
-      const saveResponse = await fetch('/api/videos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: newResult.id,
-          korean_prompt: newResult.koreanPrompt,
-          english_prompt: newResult.englishPrompt,
-          status: newResult.status
-        }),
-      });
-
-      if (!saveResponse.ok) {
-        const errorText = await saveResponse.text();
-        Logger.error('Client - Database save failed', {
-          requestId: id,
-          status: saveResponse.status,
-          statusText: saveResponse.statusText,
-          error: errorText
-        });
-        throw new Error(`Database save failed: ${saveResponse.status} - ${errorText}`);
-      }
-
-      Logger.step('Client - Initial video record saved to database', { id });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
-      Logger.error('Client - Failed to save initial video record', {
-        requestId: id,
-        error: errorMessage
-      });
-      
-      // Set error state and return early - don't continue with the process
-      setState(prev => ({
-        ...prev,
-        results: [...prev.results, { ...newResult, status: 'error', error: errorMessage }],
-        isLoading: false,
-        error: errorMessage,
-      }));
-      return;
-    }
-
+    // Add to state immediately for UI feedback
     setState(prev => ({
       ...prev,
-      results: [...prev.results, newResult],
+      results: [newResult, ...prev.results],
       isLoading: true,
       error: null,
     }));
 
-    // Start polling to track progress
-    startPolling();
-
     try {
-      // Step 1: Translate Korean to English
-      Logger.step('Client - Starting translation step', {
-        requestId: id,
-        step: '1/3',
-        action: 'translate',
-        translationModel: config.translationModel
+      // Save initial record to database
+      await createVideo({
+        id: newResult.id,
+        korean_prompt: newResult.koreanPrompt,
+        english_prompt: newResult.englishPrompt,
+        status: newResult.status
       });
 
+      Logger.step('Client - Initial video record saved to database', { id });
+
+      // Start the translation and generation process
       const translationResponse = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           koreanText: koreanPrompt,
           model: config.translationModel,
           promptConfig: config.translationPromptConfig
@@ -227,149 +231,122 @@ export function useVideoGeneration() {
 
       if (!translationResponse.ok) {
         const errorText = await translationResponse.text();
-        Logger.error('Client - Translation API failed', {
-          requestId: id,
-          status: translationResponse.status,
-          statusText: translationResponse.statusText,
-          error: errorText
-        });
-        throw new Error(`Translation failed: ${translationResponse.status}`);
+        throw new Error(`Translation failed: ${translationResponse.status} - ${errorText}`);
       }
 
-      const { englishText } = await translationResponse.json();
-      Logger.step('Client - Translation completed', {
-        requestId: id,
-        englishText: englishText.substring(0, 100) + '...',
-        translatedLength: englishText.length
+      const translationData = await translationResponse.json();
+      const englishPrompt = translationData.englishText;
+
+      Logger.step('Client - Translation completed', { 
+        id,
+        englishPrompt: englishPrompt.substring(0, 100) + '...'
       });
 
-      // Step 2: Start video generation (async)
-      Logger.step('Client - Starting video generation step', {
-        requestId: id,
-        step: '2/3',
-        action: 'generate-video',
-        videoGenerationModel: config.videoGenerationModel
+      // Update database with translation
+      const updateResponse = await fetch('/api/videos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          english_prompt: englishPrompt,
+          status: 'translating'
+        }),
       });
 
-      const videoResponse = await fetch('/api/generate-video', {
+      if (!updateResponse.ok) {
+        Logger.warn('Failed to update video record with translation', { id });
+      }
+
+      // Update local state with translation
+      setState(prev => ({
+        ...prev,
+        results: prev.results.map(result => 
+          result.id === id 
+            ? { ...result, englishPrompt, status: 'translating' as const }
+            : result
+        ),
+      }));
+
+      // Start video generation
+      const generationResponse = await fetch('/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          englishPrompt: englishText,
+        body: JSON.stringify({
+          englishPrompt,
           videoId: id,
           model: config.videoGenerationModel
         }),
       });
 
-      if (!videoResponse.ok) {
-        const errorText = await videoResponse.text();
-        Logger.error('Client - Video generation API failed', {
-          requestId: id,
-          status: videoResponse.status,
-          statusText: videoResponse.statusText,
-          error: errorText
-        });
-        throw new Error(`Video generation failed: ${videoResponse.status}`);
+      if (!generationResponse.ok) {
+        const errorText = await generationResponse.text();
+        throw new Error(`Video generation failed: ${generationResponse.status} - ${errorText}`);
       }
 
-      const { success, status } = await videoResponse.json();
+      const generationData = await generationResponse.json();
       
-      if (!success) {
-        throw new Error('Video generation failed to start');
-      }
-
-      Logger.info('Client - Video generation started successfully', {
-        requestId: id,
-        status,
-        message: 'Video generation is now running in background'
+      Logger.step('Client - Video generation started', { 
+        id,
+        status: generationData.status 
       });
 
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-      }));
-
-    } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      Logger.error('Client - Video generation workflow failed', {
+      Logger.info('Client - Video generation workflow initiated successfully', {
         requestId: id,
         totalDuration: `${duration}ms`,
-        error: errorMessage,
-        success: false
+        translationModel: config.translationModel,
+        videoGenerationModel: config.videoGenerationModel
       });
 
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Logger.error('Client - Video generation workflow failed', {
+        requestId: id,
+        error: errorMessage,
+        duration: Date.now() - startTime
+      });
+      
+      // Update state with error
       setState(prev => ({
         ...prev,
-        results: prev.results.map(result =>
-          result.id === id
-            ? {
-                ...result,
-                status: 'error',
-                error: errorMessage,
-              }
+        results: prev.results.map(result => 
+          result.id === id 
+            ? { ...result, status: 'error' as const, error: errorMessage }
             : result
         ),
-        isLoading: false,
         error: errorMessage,
       }));
-
-      // Update database with error
-      try {
-        await fetch(`/api/videos/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: 'error',
-            error_message: errorMessage,
-          }),
-        });
-      } catch (dbError) {
-        Logger.error('Client - Failed to update database with error', {
-          requestId: id,
-          dbError: dbError instanceof Error ? dbError.message : dbError
-        });
-      }
+    } finally {
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+      }));
     }
-  }, [startPolling]);
+  }, [createVideo]);
 
   const clearResults = useCallback(async () => {
     try {
-      Logger.info('Client - Clearing all video results');
+      Logger.info('Client - Clearing all videos');
+      await clearAllVideos();
       
-      // Clear from database first
-      const response = await fetch('/api/videos', {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        // Clear local state only after successful database operation
-        setState({
-          results: [],
-          isLoading: false,
-          error: null,
-          selectedIds: [],
-        });
-        
-        Logger.info('Client - All video results cleared successfully');
-      } else {
-        throw new Error('Failed to clear videos from database');
-      }
-    } catch (error) {
-      Logger.error('Client - Failed to clear video results', {
-        error: error instanceof Error ? error.message : error
-      });
-      
-      // Still clear local state even if database operation failed
-      setState({
+      setState(prev => ({
+        ...prev,
         results: [],
-        isLoading: false,
-        error: null,
         selectedIds: [],
-      });
+        error: null,
+      }));
+      
+      Logger.info('Client - All videos cleared successfully');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to clear videos';
+      Logger.error('Client - Failed to clear videos', { error: errorMessage });
+      
+      setState(prev => ({
+        ...prev,
+        error: errorMessage,
+      }));
     }
-  }, []);
+  }, [clearAllVideos]);
 
   const toggleVideoSelection = useCallback((videoId: string) => {
     setState(prev => ({
@@ -383,7 +360,7 @@ export function useVideoGeneration() {
   const selectAllVideos = useCallback(() => {
     setState(prev => ({
       ...prev,
-      selectedIds: prev.results.map(result => result.id)
+      selectedIds: prev.results.map(r => r.id)
     }));
   }, []);
 
@@ -395,58 +372,46 @@ export function useVideoGeneration() {
   }, []);
 
   const deleteSelectedVideos = useCallback(async () => {
-    const { selectedIds } = state;
-    if (selectedIds.length === 0) return;
+    if (state.selectedIds.length === 0) return;
 
     try {
-      Logger.info('Client - Deleting selected videos', { count: selectedIds.length });
-
-      // Delete videos from database in parallel
-      const deletePromises = selectedIds.map(async (id) => {
-        const response = await fetch(`/api/videos/${id}`, {
-          method: 'DELETE',
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to delete video ${id}: ${response.status}`);
-        }
-
-        return id;
-      });
-
-      const deletedIds = await Promise.all(deletePromises);
-
-      // Update local state to remove deleted videos
-      setState(prev => ({
-        ...prev,
-        results: prev.results.filter(result => !deletedIds.includes(result.id)),
-        selectedIds: [],
-      }));
-
-      Logger.info('Client - Selected videos deleted successfully', { 
-        deletedCount: deletedIds.length 
-      });
-    } catch (error) {
-      Logger.error('Client - Failed to delete selected videos', {
-        error: error instanceof Error ? error.message : error
+      Logger.info('Client - Deleting selected videos', { 
+        count: state.selectedIds.length,
+        ids: state.selectedIds 
       });
       
-      // Optionally show error to user
+      await deleteVideos(state.selectedIds);
+      
       setState(prev => ({
         ...prev,
-        error: error instanceof Error ? error.message : 'Failed to delete selected videos',
+        results: prev.results.filter(result => !prev.selectedIds.includes(result.id)),
+        selectedIds: [],
+        error: null,
+      }));
+      
+      Logger.info('Client - Selected videos deleted successfully');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete videos';
+      Logger.error('Client - Failed to delete selected videos', { error: errorMessage });
+      
+      setState(prev => ({
+        ...prev,
+        error: errorMessage,
       }));
     }
-  }, [state.selectedIds]);
+  }, [state.selectedIds, deleteVideos]);
 
   return {
-    ...state,
+    results: state.results,
+    isLoading: state.isLoading,
+    error: state.error,
+    selectedIds: state.selectedIds,
     isInitialLoading,
     generateVideo,
     clearResults,
     toggleVideoSelection,
     selectAllVideos,
     deselectAllVideos,
-    deleteSelectedVideos,
+    deleteSelectedVideos
   };
-} 
+}
