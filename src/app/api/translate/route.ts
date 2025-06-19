@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TranslationService } from '@/lib/ai';
 import { Logger } from '@/lib/logger';
+import { TranslationPromptConfig } from '@/types';
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const route = '/api/translate';
   
   try {
-    const { koreanText } = await request.json();
+    const { 
+      koreanText, 
+      model = 'gemini-2.0-flash-lite-001',
+      promptConfig 
+    } = await request.json();
 
-    Logger.apiStart(route, { koreanText: koreanText?.substring(0, 100) + '...' });
+    Logger.apiStart(route, { 
+      koreanText: koreanText?.substring(0, 100) + '...',
+      model,
+      hasCustomPromptConfig: !!promptConfig
+    });
 
     if (!koreanText) {
       Logger.warn('Translation request missing Korean text', { route });
@@ -21,18 +30,26 @@ export async function POST(request: NextRequest) {
 
     Logger.step('Starting Korean to English translation', { 
       textLength: koreanText.length,
-      preview: koreanText.substring(0, 50) + '...'
+      preview: koreanText.substring(0, 50) + '...',
+      model,
+      systemInstruction: promptConfig?.systemInstruction?.substring(0, 50) || 'default',
+      userPromptTemplate: promptConfig?.userPromptTemplate?.substring(0, 50) || 'default'
     });
 
-    const englishText = await TranslationService.translateKoreanToEnglish(koreanText);
+    const englishText = await TranslationService.translateKoreanToEnglish(
+      koreanText, 
+      model,
+      promptConfig as TranslationPromptConfig
+    );
 
     const duration = Date.now() - startTime;
-    const responseData = { koreanText, englishText };
+    const responseData = { koreanText, englishText, model, promptConfig };
 
     Logger.apiSuccess(route, duration, {
       englishText: englishText?.substring(0, 100) + '...',
       originalLength: koreanText.length,
-      translatedLength: englishText?.length || 0
+      translatedLength: englishText?.length || 0,
+      model
     });
 
     return NextResponse.json(responseData);

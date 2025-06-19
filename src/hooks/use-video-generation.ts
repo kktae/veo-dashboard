@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { VideoGenerationResult, VideoGenerationState } from '@/types';
+import { VideoGenerationResult, VideoGenerationState, AIModelConfig } from '@/types';
 import { Logger } from '@/lib/logger';
 
 export function useVideoGeneration() {
@@ -59,14 +59,17 @@ export function useVideoGeneration() {
     loadVideos();
   }, []);
 
-  const generateVideo = useCallback(async (koreanPrompt: string) => {
+  const generateVideo = useCallback(async (koreanPrompt: string, config: AIModelConfig) => {
     const startTime = Date.now();
     const id = Date.now().toString();
     
     Logger.info('Client - Starting video generation workflow', {
       requestId: id,
       koreanPrompt: koreanPrompt.substring(0, 100) + '...',
-      promptLength: koreanPrompt.length
+      promptLength: koreanPrompt.length,
+      translationModel: config.translationModel,
+      videoGenerationModel: config.videoGenerationModel,
+      hasCustomPromptConfig: config.translationPromptConfig ? 'yes' : 'no'
     });
 
     const newResult: VideoGenerationResult = {
@@ -131,7 +134,8 @@ export function useVideoGeneration() {
       Logger.step('Client - Starting translation step', {
         requestId: id,
         step: '1/2',
-        action: 'translate'
+        action: 'translate',
+        translationModel: config.translationModel
       });
 
       // Update state and database for translating status
@@ -152,7 +156,11 @@ export function useVideoGeneration() {
       const translationResponse = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ koreanText: koreanPrompt }),
+        body: JSON.stringify({ 
+          koreanText: koreanPrompt,
+          model: config.translationModel,
+          promptConfig: config.translationPromptConfig
+        }),
       });
 
       if (!translationResponse.ok) {
@@ -197,13 +205,17 @@ export function useVideoGeneration() {
       Logger.step('Client - Starting video generation step', {
         requestId: id,
         step: '2/2',
-        action: 'generate-video'
+        action: 'generate-video',
+        videoGenerationModel: config.videoGenerationModel
       });
 
       const videoResponse = await fetch('/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ englishPrompt: englishText }),
+        body: JSON.stringify({ 
+          englishPrompt: englishText,
+          model: config.videoGenerationModel
+        }),
       });
 
       if (!videoResponse.ok) {

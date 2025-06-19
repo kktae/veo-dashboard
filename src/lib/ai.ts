@@ -1,5 +1,6 @@
 import { GenerateContentConfig, GoogleGenAI, HarmCategory, HarmBlockThreshold, PersonGeneration } from '@google/genai';
 import { Logger } from './logger';
+import { TranslationPromptConfig } from '@/types';
 
 const ai = new GoogleGenAI({
   vertexai: process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true',
@@ -8,14 +9,29 @@ const ai = new GoogleGenAI({
 });
 
 export class TranslationService {
-  static async translateKoreanToEnglish(koreanText: string): Promise<string> {
+  static async translateKoreanToEnglish(
+    koreanText: string,
+    model: string = 'gemini-2.0-flash-lite-001',
+    promptConfig?: TranslationPromptConfig
+  ): Promise<string> {
     const startTime = Date.now();
+    
+    // Use default prompt config if not provided
+    const defaultPromptConfig = {
+      systemInstruction: 'You are a professional translator. You must only generate the translated text, no other text or comments.',
+      userPromptTemplate: 'Please translate the following Korean text into English: {text}'
+    };
+    
+    const config = promptConfig || defaultPromptConfig;
+    const userPrompt = config.userPromptTemplate.replace('{text}', koreanText);
     
     Logger.step("Translation Service - Starting translation", {
       service: "Gemini",
-      model: "gemini-2.0-flash-lite-001",
+      model: model,
       inputLength: koreanText.length,
-      inputPreview: koreanText.substring(0, 50) + "..."
+      inputPreview: koreanText.substring(0, 50) + "...",
+      systemInstruction: config.systemInstruction.substring(0, 50) + "...",
+      userPromptTemplate: config.userPromptTemplate.substring(0, 50) + "..."
     });
     
     const generationConfig: GenerateContentConfig = {
@@ -41,7 +57,7 @@ export class TranslationService {
         }
       ],
       systemInstruction: {
-        parts: [{"text": `You are a professional translator.  You must only generate the translated text, no other text or comments.`}]
+        parts: [{"text": config.systemInstruction}]
       },
     };
 
@@ -55,11 +71,11 @@ export class TranslationService {
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash-lite-001',
+        model: model,
         contents: [
           {
             role: 'user',
-            parts: [{"text": `Please translate the following Korean text into English: ${koreanText}`}]
+            parts: [{"text": userPrompt}]
           }
         ],
         config: generationConfig  
@@ -89,12 +105,16 @@ export class TranslationService {
 }
 
 export class VideoGenerationService {
-  static async generateVideo(englishPrompt: string, outputGcsUri?: string) {
+  static async generateVideo(
+    englishPrompt: string, 
+    outputGcsUri?: string,
+    model: string = 'veo-2.0-generate-001'
+  ) {
     const startTime = Date.now();
     
     Logger.step("Video Generation Service - Starting video generation", {
       service: "Veo",
-      model: "veo-2.0-generate-001",
+      model: model,
       promptLength: englishPrompt.length,
       promptPreview: englishPrompt.substring(0, 100) + "...",
       outputGcsUri: outputGcsUri || "not configured"
@@ -102,7 +122,7 @@ export class VideoGenerationService {
     
     try {
       let operation = await ai.models.generateVideos({
-        model: 'veo-2.0-generate-001',
+        model: model,
         prompt: englishPrompt,
         config: {
           aspectRatio: '16:9',

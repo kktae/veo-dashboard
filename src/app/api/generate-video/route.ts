@@ -7,11 +7,15 @@ export async function POST(request: NextRequest) {
   const route = '/api/generate-video';
   
   try {
-    const { englishPrompt } = await request.json();
+    const { 
+      englishPrompt,
+      model = 'veo-2.0-generate-001'
+    } = await request.json();
 
     Logger.apiStart(route, { 
       englishPrompt: englishPrompt?.substring(0, 100) + '...',
-      gcsUri: process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI ? 'configured' : 'not configured'
+      gcsUri: process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI ? 'configured' : 'not configured',
+      model
     });
 
     if (!englishPrompt) {
@@ -25,21 +29,24 @@ export async function POST(request: NextRequest) {
     Logger.step('Starting video generation with Veo', { 
       promptLength: englishPrompt.length,
       preview: englishPrompt.substring(0, 100) + '...',
-      outputUri: process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI
+      outputUri: process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI,
+      model
     });
 
     const videos = await VideoGenerationService.generateVideo(
       englishPrompt,
-      process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI
+      process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI,
+      model
     );
 
     const duration = Date.now() - startTime;
-    const responseData = { videos, success: true };
+    const responseData = { videos, success: true, model };
 
     Logger.apiSuccess(route, duration, {
       videoCount: videos?.length || 0,
       hasVideos: videos && videos.length > 0 ? 'yes' : 'no',
-      totalDuration: `${duration}ms`
+      totalDuration: `${duration}ms`,
+      model
     });
 
     return NextResponse.json(responseData);
