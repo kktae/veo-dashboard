@@ -244,12 +244,43 @@ class VideoSyncService {
    */
   async syncNewVideo(videoId: string, gcsUri: string): Promise<void> {
     if (!this.isInitialized) {
-      Logger.warn('Video Sync Service not initialized, skipping sync', { videoId });
-      return;
+      Logger.warn('Video Sync Service not initialized, initializing now', { videoId });
+      await this.initialize();
     }
 
     Logger.step('Video Sync Service - Syncing new video', { videoId, gcsUri });
-    await this.checkAndSyncVideo(videoId, gcsUri);
+    
+    // 새로 생성된 비디오의 경우, 파일이 이미 존재한다고 가정하고 즉시 synced 상태로 설정
+    const localVideoPath = path.join(process.cwd(), 'public', 'videos', `${videoId}.mp4`);
+    const localThumbnailPath = path.join(process.cwd(), 'public', 'thumbnails', `${videoId}.jpg`);
+
+    // 파일 존재 여부 확인
+    const videoExists = await this.fileExists(localVideoPath);
+    const thumbnailExists = await this.fileExists(localThumbnailPath);
+
+    if (videoExists && thumbnailExists) {
+      // 파일이 존재하면 즉시 synced 상태로 설정
+      this.syncStatus.set(videoId, {
+        videoId,
+        status: 'synced',
+        localVideoPath,
+        localThumbnailPath
+      });
+      
+      Logger.step('Video Sync Service - New video immediately synced', {
+        videoId,
+        localVideoPath,
+        localThumbnailPath
+      });
+    } else {
+      // 파일이 없으면 일반적인 동기화 프로세스 진행
+      Logger.warn('Video Sync Service - New video files not found, attempting download', {
+        videoId,
+        videoExists,
+        thumbnailExists
+      });
+      await this.checkAndSyncVideo(videoId, gcsUri);
+    }
   }
 
   /**

@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
     // your project has type errors.
     // ignoreBuildErrors: true,
   },
+  allowedDevOrigins: ["localhost", "veo.kakao-ai-hackathon-mzc.com"],
 };
 
 export default nextConfig;
