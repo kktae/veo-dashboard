@@ -91,12 +91,32 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const route = `/api/videos/${id}`;
   
   try {
+    const { deleteKey } = await request.json();
+    const adminKey = process.env.ADMIN_DELETE_KEY;
+
+    if (!adminKey) {
+      const message = 'ADMIN_DELETE_KEY is not configured on the server.';
+      Logger.error(message, { route, id });
+      return NextResponse.json(
+        { error: 'Server is not configured for deletions.' },
+        { status: 500 }
+      );
+    }
+
+    if (deleteKey !== adminKey) {
+      Logger.warn('Invalid delete key provided', { route, id });
+      return NextResponse.json(
+        { error: '잘못된 삭제 키입니다.' },
+        { status: 403 }
+      );
+    }
+
     Logger.apiStart(route, { id });
 
     const db = await getDatabase();
-    const deleted = await db.deleteVideo(id);
+    const deletedVideo = await db.deleteVideo(id);
 
-    if (!deleted) {
+    if (!deletedVideo) {
       Logger.warn('Video record not found for deletion', { route, id });
       return NextResponse.json(
         { error: 'Video not found' },
@@ -113,6 +133,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     });
   } catch (error) {
     const duration = Date.now() - startTime;
+    if (error instanceof SyntaxError) {
+      Logger.warn('DELETE request with empty or invalid JSON body', { route, id });
+      return NextResponse.json({ error: '삭제 키가 필요합니다.' }, { status: 400 });
+    }
     Logger.apiError(route, duration, error);
     
     return NextResponse.json(

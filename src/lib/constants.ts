@@ -60,7 +60,6 @@ export const API_CONFIG = {
 // UI Constants
 export const UI_CONFIG = {
   DEFAULT_PAGE_SIZE: 50,
-  CARD_HEIGHT: 500,
   THUMBNAIL_MIN_HEIGHT: 180,
   TRUNCATE_LENGTH: {
     TITLE: 100,

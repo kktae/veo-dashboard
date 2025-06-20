@@ -192,44 +192,53 @@ export async function DELETE(request: NextRequest) {
   const route = '/api/videos';
 
   try {
-    const db = await getDatabase();
     let body;
     try {
       body = await request.json();
     } catch (e) {
-      body = null; // No body or invalid JSON
+      Logger.warn('DELETE request with empty or invalid JSON body', { route });
+      return NextResponse.json({ error: '잘못된 요청입니다. 삭제 키가 필요합니다.' }, { status: 400 });
+    }
+    
+    const { deleteKey, videoIds, deleteAll } = body;
+    const adminKey = process.env.ADMIN_DELETE_KEY;
+
+    if (!adminKey) {
+      const message = 'ADMIN_DELETE_KEY is not configured on the server.';
+      Logger.error(message, { route });
+      return NextResponse.json({ error: '서버가 삭제 기능을 사용하도록 구성되지 않았습니다.' }, { status: 500 });
     }
 
-    const videoIds = body?.videoIds;
-
-    if (Array.isArray(videoIds) && videoIds.length > 0) {
-      // Delete specific videos
-      Logger.apiStart(route, { action: 'delete_selected', count: videoIds.length });
-      const deletedCount = await db.deleteVideos(videoIds);
-      const duration = Date.now() - startTime;
-      Logger.apiSuccess(route, duration, { deletedCount });
-
-      return NextResponse.json({
-        message: 'Selected videos deleted',
-        deletedCount,
-      });
-
-    } else {
-      // Clear all videos (existing functionality)
-      Logger.apiStart(route, { action: 'clear_all' });
-      const deletedCount = await db.clearAllVideos();
-      const duration = Date.now() - startTime;
-      Logger.apiSuccess(route, duration, { deletedCount });
-
-      return NextResponse.json({
-        message: 'All videos cleared',
-        deletedCount,
-      });
+    if (deleteKey !== adminKey) {
+      Logger.warn('Invalid delete key provided for bulk delete', { route });
+      return NextResponse.json({ error: '잘못된 삭제 키입니다.' }, { status: 403 });
     }
+
+    const db = await getDatabase();
+
+    if (deleteAll) {
+      Logger.apiStart(route, { action: 'deleteAll' });
+      const count = await db.clearAllVideos();
+      const duration = Date.now() - startTime;
+      Logger.apiSuccess(route, duration, { action: 'deleteAll', deletedCount: count });
+      return NextResponse.json({ message: `Successfully deleted ${count} videos.` });
+    }
+
+    if (videoIds && Array.isArray(videoIds) && videoIds.length > 0) {
+      Logger.apiStart(route, { action: 'deleteSelected', count: videoIds.length });
+      const count = await db.deleteVideos(videoIds);
+      const duration = Date.now() - startTime;
+      Logger.apiSuccess(route, duration, { action: 'deleteSelected', deletedCount: count });
+      return NextResponse.json({ message: `Successfully deleted ${count} videos.` });
+    }
+
+    Logger.warn('Invalid delete request. Missing deleteAll flag or videoIds array.', { route, body });
+    return NextResponse.json({ error: '잘못된 삭제 요청입니다. 삭제할 대상을 지정해야 합니다.' }, { status: 400 });
+
   } catch (error) {
     const duration = Date.now() - startTime;
     Logger.apiError(route, duration, error);
-
+    
     return NextResponse.json(
       { error: 'Failed to delete videos' },
       { status: 500 }

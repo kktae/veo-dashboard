@@ -48,25 +48,30 @@ const useVideoApi = () => {
     return response.json();
   }, []);
 
-  const deleteVideos = useCallback(async (videoIds: string[]) => {
+  const deleteVideos = useCallback(async (videoIds: string[], deleteKey: string) => {
     if (videoIds.length === 0) return;
     
     const response = await fetch('/api/videos', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videoIds }),
+      body: JSON.stringify({ videoIds, deleteKey }),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to delete videos: ${response.status} - ${errorText}`);
+      const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류' }));
+      throw new Error(errorData.error || `Failed to delete videos: ${response.status}`);
     }
   }, []);
 
-  const clearAllVideos = useCallback(async () => {
-    const response = await fetch('/api/videos', { method: 'DELETE' });
+  const clearAllVideos = useCallback(async (deleteKey: string) => {
+    const response = await fetch('/api/videos', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteAll: true, deleteKey }),
+    });
     if (!response.ok) {
-      throw new Error('Failed to clear videos');
+      const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류' }));
+      throw new Error(errorData.error || 'Failed to clear videos');
     }
     return response.json();
   }, []);
@@ -301,41 +306,62 @@ export function useVideoGeneration() {
           r.id === id ? { ...r, status: 'error', errorMessage } : r
         )
       }));
-      toast.error(`비디오 생성 시작 실패`, { description: errorMessage });
+      toast.error('프롬프트를 제출하지 못했습니다.', {
+        description: error instanceof Error ? error.message : String(error),
+      });
     }
   }, [createVideo]);
 
-  const clearResults = useCallback(async () => {
-    const previousResults = state.results;
-    
-    Logger.info('Client - Clearing all videos');
-    toast.info('모든 비디오를 삭제합니다...');
-    
-    // Optimistically update UI
-    setState(prev => ({
-      ...prev,
-      results: [],
-      selectedIds: [],
-      error: null,
-    }));
+  const deleteSelectedVideos = useCallback(async (deleteKey: string) => {
+    const videoIdsToDelete = state.selectedIds;
+    if (videoIdsToDelete.length === 0) {
+      toast.info('삭제할 비디오를 선택해주세요.');
+      return;
+    }
 
+    const toastId = toast.loading(`${videoIdsToDelete.length}개의 비디오를 삭제 중입니다...`);
+    
     try {
-      await clearAllVideos();
-      Logger.info('Client - All videos cleared successfully from server');
-      toast.success('모든 비디오가 삭제되었습니다.');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to clear videos';
-      Logger.error('Client - Failed to clear videos, reverting UI', { error: errorMessage });
-      toast.error('모두 삭제 실패', { description: errorMessage });
+      await deleteVideos(videoIdsToDelete, deleteKey);
       
-      // Revert UI on failure
       setState(prev => ({
         ...prev,
-        results: previousResults,
-        error: null,
+        results: prev.results.filter(r => !videoIdsToDelete.includes(r.id)),
+        selectedIds: [],
       }));
+      
+      toast.success('선택한 비디오를 성공적으로 삭제했습니다.', { id: toastId });
+    } catch (error) {
+      Logger.error('Client - Failed to delete selected videos', { 
+        error: error instanceof Error ? error.message : error 
+      });
+      toast.error('비디오 삭제에 실패했습니다.', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      });
     }
-  }, [clearAllVideos, state.results]);
+  }, [state.selectedIds, deleteVideos]);
+
+  const clearResults = useCallback(async (deleteKey: string) => {
+    const toastId = toast.loading('모든 비디오를 삭제 중입니다...');
+    try {
+      await clearAllVideos(deleteKey);
+      setState(prev => ({
+        ...prev,
+        results: [],
+        selectedIds: [],
+      }));
+      toast.success('모든 비디오를 성공적으로 삭제했습니다.', { id: toastId });
+    } catch (error) {
+      Logger.error('Client - Failed to clear results', { 
+        error: error instanceof Error ? error.message : error 
+      });
+      toast.error('모든 비디오 삭제에 실패했습니다.', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [clearAllVideos]);
 
   const toggleVideoSelection = useCallback((videoId: string) => {
     setState(prev => ({
@@ -360,40 +386,6 @@ export function useVideoGeneration() {
     }));
   }, []);
 
-  const deleteSelectedVideos = useCallback(async () => {
-    if (state.selectedIds.length === 0) return;
-
-    const previousState = { results: state.results, selectedIds: state.selectedIds };
-
-    Logger.info('Client - Deleting selected videos', { count: state.selectedIds.length });
-    
-    // Optimistically update UI
-    setState(prev => ({
-      ...prev,
-      results: prev.results.filter(result => !prev.selectedIds.includes(result.id)),
-      selectedIds: [],
-      error: null,
-    }));
-
-    try {
-      await deleteVideos(state.selectedIds);
-      Logger.info('Client - Selected videos deleted successfully from server');
-      toast.success(`${state.selectedIds.length}개의 비디오가 삭제되었습니다.`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to delete videos';
-      Logger.error('Client - Failed to delete selected videos, reverting UI', { error: errorMessage });
-      toast.error('선택 삭제 실패', { description: errorMessage });
-
-      // Revert UI on failure
-      setState(prev => ({
-        ...prev,
-        results: previousState.results,
-        selectedIds: previousState.selectedIds,
-        error: null,
-      }));
-    }
-  }, [state.selectedIds, state.results, deleteVideos]);
-
   return {
     results: state.results,
     isLoading: state.isLoading,
@@ -405,9 +397,9 @@ export function useVideoGeneration() {
     loadMoreVideos,
     generateVideo,
     clearResults,
+    deleteSelectedVideos,
     toggleVideoSelection,
     selectAllVideos,
-    deselectAllVideos,
-    deleteSelectedVideos
+    deselectAllVideos
   };
 }

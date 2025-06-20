@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Trash2, Video, Check, X } from 'lucide-react';
+import { Trash2, Video, Check, X, Loader2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 
 export function VideoDashboard() {
   const { 
@@ -30,6 +32,8 @@ export function VideoDashboard() {
   const [isMounted, setIsMounted] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
+  const [deleteKey, setDeleteKey] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
   const selectAllCheckboxRef = useRef<any>(null);
 
   useEffect(() => {
@@ -49,13 +53,27 @@ export function VideoDashboard() {
   }, [selectedIds.length, results.length]);
 
   const handleDeleteSelected = async () => {
-    await deleteSelectedVideos();
+    if (!deleteKey) {
+      toast.error('삭제 키를 입력해주세요.');
+      return;
+    }
+    setIsDeleting(true);
+    await deleteSelectedVideos(deleteKey);
+    setIsDeleting(false);
     setIsDeleteDialogOpen(false);
+    setDeleteKey('');
   };
 
   const handleClearAll = async () => {
-    await clearResults();
+    if (!deleteKey) {
+      toast.error('삭제 키를 입력해주세요.');
+      return;
+    }
+    setIsDeleting(true);
+    await clearResults(deleteKey);
+    setIsDeleting(false);
     setIsClearAllDialogOpen(false);
+    setDeleteKey('');
   };
 
   if (!isMounted) {
@@ -159,15 +177,31 @@ export function VideoDashboard() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>선택한 비디오를 삭제하시겠습니까?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          선택된 {selectedIds.length}개의 비디오가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+                          선택된 {selectedIds.length}개의 비디오가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다. 삭제하려면 관리자 키를 입력하세요.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
+                      <div className="py-4">
+                        <Input 
+                          type="password"
+                          placeholder="삭제 키 입력"
+                          value={deleteKey}
+                          onChange={(e) => setDeleteKey(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleDeleteSelected();
+                            }
+                          }}
+                        />
+                      </div>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>취소</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => setDeleteKey('')}>취소</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={handleDeleteSelected}
+                          disabled={isDeleting}
                           className="bg-red-600 hover:bg-red-700 text-white"
                         >
+                          {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           삭제
                         </AlertDialogAction>
                       </AlertDialogFooter>
@@ -190,15 +224,31 @@ export function VideoDashboard() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>모든 비디오를 삭제하시겠습니까?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        총 {results.length}개의 모든 비디오가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+                        총 {results.length}개의 모든 비디오가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다. 삭제하려면 관리자 키를 입력하세요.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
+                    <div className="py-4">
+                      <Input 
+                        type="password"
+                        placeholder="삭제 키 입력"
+                        value={deleteKey}
+                        onChange={(e) => setDeleteKey(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleClearAll();
+                          }
+                        }}
+                      />
+                    </div>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>취소</AlertDialogCancel>
+                      <AlertDialogCancel onClick={() => setDeleteKey('')}>취소</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={handleClearAll}
+                        disabled={isDeleting}
                         className="bg-red-600 hover:bg-red-700 text-white"
                       >
+                        {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         모두 삭제
                       </AlertDialogAction>
                     </AlertDialogFooter>
