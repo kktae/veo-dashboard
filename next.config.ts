@@ -15,7 +15,22 @@ const nextConfig: NextConfig = {
     // ignoreBuildErrors: true,
   },
   
-  allowedDevOrigins: ["localhost", "veo.kakao-ai-hackathon-mzc.com"],
+  allowedDevOrigins: ["localhost", "veo.kakao-ai-hackathon-mzc.com", "34.36.118.217", "34.49.27.61"],
+
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*',
+          },
+        ],
+      },
+    ];
+  },
+  
 };
 
 export default nextConfig;
