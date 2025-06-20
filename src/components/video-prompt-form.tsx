@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Send, Loader2, ChevronDown, ChevronRight, Settings } from 'lucide-react';
+import { Send, Loader2, ChevronDown, ChevronRight, Settings, Clock } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
 import { 
   DEFAULT_TRANSLATION_MODELS, 
   DEFAULT_VIDEO_GENERATION_MODELS, 
@@ -42,6 +43,10 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
 
   const updateVideoGenerationModel = (model: string) => {
     setConfig(prev => ({ ...prev, videoGenerationModel: model }));
+  };
+
+  const updateDuration = (duration: number[]) => {
+    setConfig(prev => ({ ...prev, durationSeconds: duration[0] }));
   };
 
   const updateSystemInstruction = (instruction: string) => {
@@ -158,6 +163,29 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
             </div>
           </div>
 
+          {/* Duration Slider */}
+          <div className="space-y-2 pt-2">
+            <div className="flex justify-between items-center">
+              <Label htmlFor="duration" className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                비디오 길이 (초)
+              </Label>
+              <span className="text-sm font-medium text-muted-foreground bg-primary/10 px-2 py-1 rounded-md">
+                {config.durationSeconds}초
+              </span>
+            </div>
+            <Slider
+              id="duration"
+              min={5}
+              max={8}
+              step={1}
+              value={[config.durationSeconds]}
+              onValueChange={updateDuration}
+              disabled={isLoading}
+              className="py-2"
+            />
+          </div>
+
           {/* Advanced Settings - Collapsible */}
           <Collapsible open={isAdvancedOpen} onOpenChange={setIsAdvancedOpen}>
             <CollapsibleTrigger asChild>
@@ -248,14 +276,9 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
         <div className="pt-4 border-t">
           <p className="text-sm text-muted-foreground mb-2">현재 설정:</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-            <div>
-              <span className="font-medium">번역 모델:</span>{' '}
-              {DEFAULT_TRANSLATION_MODELS.find(m => m.id === config.translationModel)?.name}
-            </div>
-            <div>
-              <span className="font-medium">비디오 모델:</span>{' '}
-              {DEFAULT_VIDEO_GENERATION_MODELS.find(m => m.id === config.videoGenerationModel)?.name}
-            </div>
+            <p><strong>번역 모델:</strong> {config.translationModel}</p>
+            <p><strong>비디오 모델:</strong> {config.videoGenerationModel}</p>
+            <p><strong>비디오 길이:</strong> {config.durationSeconds}초</p>
           </div>
         </div>
       </CardContent>

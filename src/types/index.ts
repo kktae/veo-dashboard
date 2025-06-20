@@ -85,6 +85,7 @@ export interface AIModelConfig {
   translationModel: string;
   videoGenerationModel: string;
   translationPromptConfig: TranslationPromptConfig;
+  durationSeconds: number;
 }
 
 // Default configurations
@@ -92,7 +93,7 @@ export const DEFAULT_TRANSLATION_MODELS: TranslationModel[] = [
   {
     id: 'gemini-2.0-flash-lite-001',
     name: 'Gemini 2.0 Flash Lite',
-    description: '빠르고 효율적인 번역'
+    description: '가장 빠르고 비용 효율적인 모델'
   },
   {
     id: 'gemini-2.0-flash-001',
@@ -117,5 +118,6 @@ export const DEFAULT_TRANSLATION_PROMPT_CONFIG: TranslationPromptConfig = {
 export const DEFAULT_AI_MODEL_CONFIG: AIModelConfig = {
   translationModel: 'gemini-2.0-flash-lite-001',
   videoGenerationModel: 'veo-2.0-generate-001',
+  durationSeconds: 8,
   translationPromptConfig: DEFAULT_TRANSLATION_PROMPT_CONFIG
 }; 

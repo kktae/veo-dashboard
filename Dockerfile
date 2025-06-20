@@ -1,30 +1,14 @@
 FROM oven/bun:1.2.16-alpine AS base
 
-# Install system dependencies including ffmpeg and video processing tools
-RUN apk add --no-cache \
-    ffmpeg \
-    # ffmpeg-dev \
-    # imagemagick \
-    # imagemagick-dev \
-    # python3 \
-    # python3-dev \
-    # make \
-    # g++ \
-    # pkgconfig \
-    # cairo-dev \
-    # pango-dev \
-    # jpeg-dev \
-    # giflib-dev \
-    # librsvg-dev \
-    # pixman-dev \
-    && rm -rf /var/cache/apk/*
+# Install system dependencies including ffmpeg
+RUN apk add --no-cache ffmpeg && rm -rf /var/cache/apk/*
 
 # Install dependencies only when needed
 FROM base AS deps
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
-COPY package.json bun.lock* ./
+COPY package.json bun.lockb ./
 RUN bun install --frozen-lockfile
 
 # Rebuild the source code only when needed
@@ -58,16 +42,13 @@ ARG GID=1001
 RUN addgroup -g $GID -S veogroup && \
     adduser -u $UID -S veouser -G veogroup
 
-# Copy built application
+# Copy application code, dependencies and build artifacts
 COPY --from=builder /app/public ./public
-
-# Set the correct permission for prerender cache
-RUN mkdir .next
-
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.ts ./next.config.ts
+COPY --from=builder /app/bun.lockb ./bun.lockb
+COPY --from=deps /app/node_modules ./node_modules
 
 # Create directories and set proper ownership
 RUN mkdir -p /app/credentials /app/data /app/public/videos /app/public/thumbnails && \
@@ -79,8 +60,6 @@ USER veouser:veogroup
 EXPOSE 3000
 
 ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
 
-# Server.js is created by next build from the standalone output
-# https://nextjs.org/docs/pages/api-reference/config/next-config-js/output
-CMD ["bun", "run", "server.js"]
+# The start script from package.json will be used: "next start -H 0.0.0.0 -p 3000"
+CMD ["bun", "run", "start"]

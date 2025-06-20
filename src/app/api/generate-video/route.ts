@@ -12,7 +12,8 @@ export async function POST(request: NextRequest) {
     const { 
       englishPrompt,
       videoId,
-      model = 'veo-2.0-generate-001'
+      model = 'veo-2.0-generate-001',
+      durationSeconds
     } = await request.json();
 
     Logger.apiStart(route, { 
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Start background processing (don't await)
-    processVideoGeneration(videoId, englishPrompt, model).catch(error => {
+    processVideoGeneration(videoId, englishPrompt, model, 0, durationSeconds).catch(error => {
       Logger.error('Background video generation failed', {
         videoId,
         error: error instanceof Error ? error.message : error
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Background processing function
-async function processVideoGeneration(videoId: string, englishPrompt: string, model: string, retryCount: number = 0) {
+async function processVideoGeneration(videoId: string, englishPrompt: string, model: string, retryCount: number = 0, durationSeconds?: number) {
   const startTime = Date.now();
   const maxRetries = 3;
   
@@ -91,7 +92,8 @@ async function processVideoGeneration(videoId: string, englishPrompt: string, mo
     const videos = await VideoGenerationService.generateVideo(
       englishPrompt,
       process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI,
-      model
+      model,
+      durationSeconds
     );
 
     if (!videos || videos.length === 0) {
@@ -174,7 +176,7 @@ async function processVideoGeneration(videoId: string, englishPrompt: string, mo
 
       // Schedule retry
       setTimeout(() => {
-        processVideoGeneration(videoId, englishPrompt, model, retryCount + 1).catch(retryError => {
+        processVideoGeneration(videoId, englishPrompt, model, retryCount + 1, durationSeconds).catch(retryError => {
           Logger.error('Retry also failed', {
             videoId,
             retryCount: retryCount + 1,

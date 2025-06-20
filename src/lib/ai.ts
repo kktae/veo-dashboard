@@ -118,7 +118,8 @@ export class VideoGenerationService {
   static async generateVideo(
     englishPrompt: string, 
     outputGcsUri?: string,
-    model: string = 'veo-2.0-generate-001'
+    model: string = 'veo-2.0-generate-001',
+    durationSeconds: number = 8
   ) {
     const startTime = Date.now();
     
@@ -143,7 +144,7 @@ export class VideoGenerationService {
           config: {
             aspectRatio: '16:9',
             numberOfVideos: 1,
-            durationSeconds: 8,
+            durationSeconds: durationSeconds,
             enhancePrompt: true,
             generateAudio: false,
             outputGcsUri: outputGcsUri,

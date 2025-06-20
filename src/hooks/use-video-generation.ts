@@ -278,7 +278,8 @@ export function useVideoGeneration() {
         body: JSON.stringify({
           englishPrompt,
           videoId: id,
-          model: config.videoGenerationModel
+          model: config.videoGenerationModel,
+          durationSeconds: config.durationSeconds
         }),
       });
 
