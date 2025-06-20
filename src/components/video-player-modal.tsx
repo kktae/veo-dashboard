@@ -15,7 +15,7 @@ interface VideoPlayerModalProps {
 export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -26,7 +26,6 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
   // Reset state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
-      console.log('Modal opened, resetting state');
       setIsPlaying(false);
       setCurrentTime(0);
       setDuration(0);
@@ -34,7 +33,6 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
       setHasError(false);
       setPlayPromise(null);
     } else {
-      console.log('Modal closed');
       setPlayPromise(null);
     }
   }, [isOpen]);
@@ -46,39 +44,30 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    console.log('Setting up video event listeners for:', video.videoUrl);
-
     const handleTimeUpdate = () => {
-      console.log('Time update:', videoElement.currentTime);
       setCurrentTime(videoElement.currentTime);
     };
     
     const handleDurationChange = () => {
-      console.log('Duration changed:', videoElement.duration);
       if (videoElement.duration && !isNaN(videoElement.duration) && isFinite(videoElement.duration)) {
-        console.log('Setting duration from durationchange event:', videoElement.duration);
         setDuration(videoElement.duration);
       }
     };
     
     const handlePlay = () => {
-      console.log('Video play event - setting isPlaying to true');
       setIsPlaying(true);
     };
     
     const handlePause = () => {
-      console.log('Video pause event - setting isPlaying to false');
       setIsPlaying(false);
     };
 
     const handleLoadedData = () => {
-      console.log('Video loaded data');
       setIsLoading(false);
       setHasError(false);
     };
 
     const handleLoadStart = () => {
-      console.log('Video load start');
       setIsLoading(true);
       setHasError(false);
     };
@@ -90,37 +79,30 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
     };
 
     const handleCanPlay = () => {
-      console.log('Video can play');
       setIsLoading(false);
     };
 
     const handleLoadedMetadata = () => {
-      console.log('Video metadata loaded, duration:', videoElement.duration);
       if (videoElement.duration && !isNaN(videoElement.duration) && isFinite(videoElement.duration)) {
-        console.log('Setting duration from loadedmetadata event:', videoElement.duration);
         setDuration(videoElement.duration);
       }
       setIsLoading(false);
     };
 
     const handleWaiting = () => {
-      console.log('Video waiting for data');
       setIsLoading(true);
     };
 
     const handlePlaying = () => {
-      console.log('Video playing - setting isPlaying to true');
       setIsPlaying(true);
       setIsLoading(false);
     };
 
     const handleSeeking = () => {
-      console.log('Video seeking');
       setIsLoading(true);
     };
 
     const handleSeeked = () => {
-      console.log('Video seeked');
       setIsLoading(false);
     };
 
@@ -141,7 +123,6 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
 
     // Set up a timeout to force loading to false after 10 seconds
     const loadingTimeout = setTimeout(() => {
-      console.log('Loading timeout - forcing loading to false');
       setIsLoading(false);
     }, 10000);
 
@@ -171,21 +152,12 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
       const videoElement = videoRef.current;
       if (!videoElement) return;
 
-      console.log('Checking video readiness:', {
-        readyState: videoElement.readyState,
-        networkState: videoElement.networkState,
-        currentSrc: videoElement.currentSrc,
-        duration: videoElement.duration
-      });
-
       // If video is ready to play but still loading, force loading to false
       if (videoElement.readyState >= 2) { // HAVE_CURRENT_DATA or higher
-        console.log('Video is ready, forcing loading to false');
         setIsLoading(false);
         
         // Also set duration if available
         if (videoElement.duration && !isNaN(videoElement.duration) && isFinite(videoElement.duration)) {
-          console.log('Setting duration from readiness check:', videoElement.duration);
           setDuration(videoElement.duration);
         }
       }
@@ -208,14 +180,7 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
       const videoElement = videoRef.current;
       if (!videoElement) return;
 
-      console.log('Force duration check:', {
-        duration: videoElement.duration,
-        readyState: videoElement.readyState,
-        currentDuration: duration
-      });
-
       if (videoElement.duration && !isNaN(videoElement.duration) && isFinite(videoElement.duration) && !duration) {
-        console.log('Force setting duration:', videoElement.duration);
         setDuration(videoElement.duration);
       }
     };
@@ -241,46 +206,26 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
     const videoElement = videoRef.current;
     if (!videoElement || isLoading || hasError) return;
 
-    console.log('togglePlay called, current isPlaying:', isPlaying);
-    console.log('Video element paused:', videoElement.paused);
-
     try {
       if (isPlaying || !videoElement.paused) {
-        console.log('Attempting to pause video');
         // If there's a play promise, wait for it to complete before pausing
-        if (playPromise !== null) {
-          console.log('Waiting for play promise to resolve before pausing');
+        if (playPromise) {
           await playPromise;
         }
         videoElement.pause();
         setIsPlaying(false);
-        setPlayPromise(null);
       } else {
-        console.log('Attempting to play video');
         const promise = videoElement.play();
         setPlayPromise(promise);
-        
-        if (promise !== undefined) {
-          promise.then(() => {
-            console.log('Video play promise resolved - playback started');
-            setIsPlaying(true);
-            setPlayPromise(null);
-          }).catch(error => {
-            console.error('Video play promise rejected:', error);
-            setHasError(true);
-            setIsPlaying(false);
-            setPlayPromise(null);
-          });
-        } else {
-          // Fallback for browsers that don't return a promise
+        if (promise) {
+          await promise;
           setIsPlaying(true);
           setPlayPromise(null);
         }
       }
-    } catch (error) {
-      console.error('Play failed:', error);
-      setHasError(true);
-      setIsPlaying(false);
+    } catch (err) {
+      console.error('Error toggling play:', err);
+      setIsPlaying(false); // Assume it failed to play
       setPlayPromise(null);
     }
   };
@@ -356,44 +301,36 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
             preload="auto"
             controls={false}
             playsInline
+            autoPlay
+            muted={isMuted}
             key={video.videoUrl} // Force re-render when video URL changes
             onLoadStart={() => {
-              console.log('Video onLoadStart');
               setIsLoading(true);
               setPlayPromise(null);
             }}
             onLoadedMetadata={(e) => {
-              console.log('Video onLoadedMetadata inline, duration:', e.currentTarget.duration);
               if (e.currentTarget.duration && !isNaN(e.currentTarget.duration) && isFinite(e.currentTarget.duration)) {
-                console.log('Setting duration from inline loadedmetadata:', e.currentTarget.duration);
                 setDuration(e.currentTarget.duration);
               }
               setIsLoading(false);
             }}
             onCanPlay={(e) => {
-              console.log('Video onCanPlay, duration:', e.currentTarget.duration);
               if (e.currentTarget.duration && !isNaN(e.currentTarget.duration) && isFinite(e.currentTarget.duration)) {
-                console.log('Setting duration from onCanPlay:', e.currentTarget.duration);
                 setDuration(e.currentTarget.duration);
               }
               setIsLoading(false);
             }}
             onPlay={() => {
-              console.log('Video onPlay inline handler');
               setIsPlaying(true);
             }}
             onPause={() => {
-              console.log('Video onPause inline handler');
               setIsPlaying(false);
             }}
             onTimeUpdate={(e) => {
-              console.log('Video onTimeUpdate inline handler:', e.currentTarget.currentTime);
               setCurrentTime(e.currentTarget.currentTime);
             }}
             onDurationChange={(e) => {
-              console.log('Video onDurationChange inline handler:', e.currentTarget.duration);
               if (e.currentTarget.duration && !isNaN(e.currentTarget.duration) && isFinite(e.currentTarget.duration)) {
-                console.log('Setting duration from inline durationchange:', e.currentTarget.duration);
                 setDuration(e.currentTarget.duration);
               }
             }}
@@ -422,7 +359,6 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    console.log('Manual loading reset');
                     setIsLoading(false);
                   }}
                   className="mt-4 text-black"
@@ -500,6 +436,7 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
                     size="sm"
                     onClick={toggleMute}
                     className="text-white hover:bg-white/20"
+                    title={isMuted ? 'Unmute' : 'Mute'}
                   >
                     {isMuted ? (
                       <VolumeX className="h-5 w-5" />
@@ -509,27 +446,28 @@ export function VideoPlayerModal({ video, isOpen, onClose }: VideoPlayerModalPro
                   </Button>
 
                   <div className="text-sm">
-                    {formatTime(currentTime)} / {duration ? formatTime(duration) : '--:--'}
+                    {formatTime(currentTime)} / {duration > 0 ? formatTime(duration) : '0:00'}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={handleDownload}
                     className="text-white hover:bg-white/20"
+                    title="Download"
                   >
-                    <Download className="h-4 w-4" />
+                    <Download className="h-5 w-5" />
                   </Button>
-
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={toggleFullscreen}
                     className="text-white hover:bg-white/20"
+                    title="Fullscreen"
                   >
-                    <Maximize className="h-4 w-4" />
+                    <Maximize className="h-5 w-5" />
                   </Button>
                 </div>
               </div>
