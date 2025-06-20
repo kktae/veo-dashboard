@@ -212,17 +212,14 @@ export function VideoDashboard() {
             </div>
 
             <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-              {results
-                .slice()
-                .reverse() // Show newest first
-                .map((result) => (
-                  <VideoResultCard 
-                    key={result.id} 
-                    result={result}
-                    isSelected={selectedIds.includes(result.id)}
-                    onToggleSelection={toggleVideoSelection}
-                  />
-                ))}
+              {results.map((result) => (
+                <VideoResultCard 
+                  key={result.id} 
+                  result={result}
+                  isSelected={selectedIds.includes(result.id)}
+                  onToggleSelection={toggleVideoSelection}
+                />
+              ))}
             </div>
           </div>
         )}

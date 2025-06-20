@@ -219,11 +219,7 @@ class VideoDatabase {
   async getVideos(limit: number = 50, offset: number = 0): Promise<VideoRecord[]> {
     const selectSQL = `
       SELECT * FROM videos 
-      ORDER BY 
-        CASE 
-          WHEN completed_at IS NOT NULL THEN completed_at 
-          ELSE created_at 
-        END DESC 
+      ORDER BY created_at DESC 
       LIMIT $1 OFFSET $2
     `;
     
@@ -251,11 +247,7 @@ class VideoDatabase {
     const selectSQL = `
       SELECT * FROM videos 
       WHERE status = $1 
-      ORDER BY 
-        CASE 
-          WHEN completed_at IS NOT NULL THEN completed_at 
-          ELSE created_at 
-        END DESC
+      ORDER BY created_at DESC
     `;
     
     try {
