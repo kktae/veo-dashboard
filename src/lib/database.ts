@@ -242,6 +242,36 @@ class VideoDatabase {
     }
   }
 
+  // Get videos by their IDs
+  async getVideosByIds(ids: string[]): Promise<VideoRecord[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    
+    const selectSQL = `
+      SELECT * FROM videos 
+      WHERE id = ANY($1::varchar[])
+      ORDER BY created_at DESC
+    `;
+    
+    try {
+      const result = await this.pool.query(selectSQL, [ids]);
+      const records = result.rows as VideoRecord[];
+      
+      Logger.debug('Database - Video records retrieved by IDs', { 
+        count: records.length,
+        requested: ids.length 
+      });
+      
+      return records;
+    } catch (error) {
+      Logger.error('Database - Failed to get video records by IDs', { 
+        error: error instanceof Error ? error.message : error 
+      });
+      throw error;
+    }
+  }
+
   // Get videos by status
   async getVideosByStatus(status: VideoRecord['status']): Promise<VideoRecord[]> {
     const selectSQL = `
@@ -269,21 +299,21 @@ class VideoDatabase {
     }
   }
 
-  // Delete video record
+  // Delete single video record
   async deleteVideo(id: string): Promise<boolean> {
     const deleteSQL = 'DELETE FROM videos WHERE id = $1';
     
     try {
       const result = await this.pool.query(deleteSQL, [id]);
+      const success = (result.rowCount ?? 0) > 0;
       
-      const deleted = (result.rowCount ?? 0) > 0;
-      if (deleted) {
+      if (success) {
         Logger.step('Database - Video record deleted', { id });
       } else {
         Logger.warn('Database - No video record found to delete', { id });
       }
       
-      return deleted;
+      return success;
     } catch (error) {
       Logger.error('Database - Failed to delete video record', { 
         id, 
@@ -293,9 +323,35 @@ class VideoDatabase {
     }
   }
 
-  // Delete all video records
+  // Delete multiple video records by their IDs
+  async deleteVideos(ids: string[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+    
+    const deleteSQL = 'DELETE FROM videos WHERE id = ANY($1::varchar[])';
+    
+    try {
+      const result = await this.pool.query(deleteSQL, [ids]);
+      const deletedCount = result.rowCount ?? 0;
+      
+      Logger.step('Database - Multiple video records deleted', { 
+        count: deletedCount, 
+        requested: ids.length 
+      });
+      
+      return deletedCount;
+    } catch (error) {
+      Logger.error('Database - Failed to delete multiple video records', {
+        error: error instanceof Error ? error.message : error
+      });
+      throw error;
+    }
+  }
+
+  // Clear all video records
   async clearAllVideos(): Promise<number> {
-    const deleteSQL = 'DELETE FROM videos';
+    const deleteSQL = 'TRUNCATE TABLE videos RESTART IDENTITY';
     
     try {
       const result = await this.pool.query(deleteSQL);

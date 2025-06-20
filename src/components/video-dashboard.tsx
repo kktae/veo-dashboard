@@ -14,6 +14,7 @@ export function VideoDashboard() {
   const { 
     results, 
     isLoading, 
+    isAppending,
     error, 
     selectedIds,
     isInitialLoading,
@@ -22,7 +23,9 @@ export function VideoDashboard() {
     toggleVideoSelection,
     selectAllVideos,
     deselectAllVideos,
-    deleteSelectedVideos
+    deleteSelectedVideos,
+    hasMore,
+    loadMoreVideos
   } = useVideoGeneration();
   const [isMounted, setIsMounted] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -107,13 +110,6 @@ export function VideoDashboard() {
           <VideoPromptForm onSubmit={generateVideo} isLoading={isLoading} />
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <Alert variant="destructive" className="max-w-2xl mx-auto">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
         {/* Results Section */}
         {results.length > 0 && (
           <div className="space-y-6">
@@ -139,7 +135,7 @@ export function VideoDashboard() {
                     />
                     <span className="text-sm text-gray-600">
                       {selectedIds.length > 0 
-                        ? `${selectedIds.length}개 선택됨`
+                        ? `${selectedIds.length} / ${results.length}개 선택됨`
                         : '전체 선택'
                       }
                     </span>
@@ -221,6 +217,20 @@ export function VideoDashboard() {
                 />
               ))}
             </div>
+
+            {hasMore && (
+              <div className="flex justify-center mt-6">
+                <Button
+                  onClick={loadMoreVideos}
+                  disabled={isLoading || isAppending}
+                  variant="outline"
+                  size="lg"
+                  className="bg-white"
+                >
+                  {isAppending ? '로딩 중...' : '더보기'}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

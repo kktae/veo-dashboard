@@ -3,71 +3,123 @@ import { VideoGenerationService } from '@/lib/ai';
 import { Logger } from '@/lib/logger';
 import { updateVideoRecord } from '@/lib/database';
 import { validateResolution } from '@/lib/video-utils';
+import { AIModelConfig } from '@/types';
+
+async function translateText(koreanText: string, config: AIModelConfig, videoId: string): Promise<string> {
+  Logger.step('Starting translation process', { videoId, model: config.translationModel });
+  
+  const translateResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/translate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      koreanText,
+      model: config.translationModel,
+      promptConfig: config.translationPromptConfig,
+    }),
+  });
+
+  if (!translateResponse.ok) {
+    const errorText = await translateResponse.text();
+    Logger.error('Translation API call failed', { videoId, status: translateResponse.status, error: errorText });
+    throw new Error(`Translation failed: ${errorText}`);
+  }
+
+  const data = await translateResponse.json();
+  Logger.step('Translation process completed', { videoId, englishPrompt: data.englishText.substring(0, 100) + '...' });
+  return data.englishText;
+}
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const route = '/api/generate-video';
+  let videoId: string | null = null;
   
   try {
     const { 
-      englishPrompt,
-      videoId,
-      model = 'veo-2.0-generate-001',
-      durationSeconds
+      videoId: reqVideoId,
+      koreanPrompt,
+      config,
+      userEmail
     } = await request.json();
+    
+    videoId = reqVideoId;
 
     Logger.apiStart(route, { 
       videoId,
-      englishPrompt: englishPrompt?.substring(0, 100) + '...',
-      gcsUri: process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI ? 'configured' : 'not configured',
-      model
+      koreanPrompt: koreanPrompt?.substring(0, 100) + '...',
+      userEmail,
+      model: config.videoGenerationModel,
     });
 
-    if (!englishPrompt || !videoId) {
-      Logger.warn('Video generation request missing required parameters', { route, videoId, hasPrompt: !!englishPrompt });
+    if (!koreanPrompt || !videoId || !config || !userEmail) {
+      Logger.warn('Video generation request missing required parameters', { 
+        route, 
+        videoId, 
+        hasPrompt: !!koreanPrompt, 
+        hasConfig: !!config,
+        hasUserEmail: !!userEmail
+      });
       return NextResponse.json(
-        { error: 'English prompt and video ID are required' },
+        { error: 'Video ID, Korean prompt, user email, and config are required' },
         { status: 400 }
       );
     }
 
-    // Update database status to generating and save english prompt
+    // 1. Translate Korean prompt to English
+    const englishPrompt = await translateText(koreanPrompt, config, videoId);
+
+    // 2. Update database status to generating and save English prompt
     await updateVideoRecord(videoId, { 
       status: 'generating',
       english_prompt: englishPrompt
     });
+    Logger.step('Database updated with translated prompt and generating status', { videoId });
 
-    // Return immediately with job ID
-    const response = NextResponse.json({ 
-      success: true, 
-      videoId,
-      status: 'generating',
-      message: 'Video generation started'
-    });
 
-    // Start background processing (don't await)
-    processVideoGeneration(videoId, englishPrompt, model, 0, durationSeconds).catch(error => {
-      Logger.error('Background video generation failed', {
+    // 3. Start background processing (don't await)
+    processVideoGeneration(
+      videoId, 
+      englishPrompt, 
+      config.videoGenerationModel, 
+      0, 
+      config.durationSeconds
+    ).catch(error => {
+      Logger.error('Background video generation failed to start', {
         videoId,
         error: error instanceof Error ? error.message : error
       });
     });
 
+    // 4. Return immediate success response
     const duration = Date.now() - startTime;
     Logger.apiSuccess(route, duration, {
       videoId,
       status: 'generating',
       totalDuration: `${duration}ms`,
-      model
+      model: config.videoGenerationModel
     });
 
-    return response;
+    return NextResponse.json({ 
+      success: true, 
+      videoId,
+      status: 'generating',
+      message: 'Video generation workflow started successfully'
+    });
+
   } catch (error) {
     const duration = Date.now() - startTime;
     Logger.apiError(route, duration, error);
     
+    // If an error occurs, update the video record status to 'error'
+    if (videoId) {
+      await updateVideoRecord(videoId, {
+        status: 'error',
+        error_message: error instanceof Error ? `Workflow start failed: ${error.message}` : 'Unknown error during startup'
+      });
+    }
+
     return NextResponse.json(
-      { error: 'Video generation failed to start' },
+      { error: 'Video generation workflow failed to start' },
       { status: 500 }
     );
   }

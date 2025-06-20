@@ -24,16 +24,20 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    const idsParam = searchParams.get('ids');
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
     const status = searchParams.get('status') as VideoRecord['status'] | null;
 
-    Logger.apiStart(route, { limit, offset, status });
+    Logger.apiStart(route, { ids: idsParam, limit, offset, status });
 
     const db = await getDatabase();
     let videos: VideoRecord[];
 
-    if (status) {
+    if (idsParam) {
+      const ids = idsParam.split(',');
+      videos = await db.getVideosByIds(ids);
+    } else if (status) {
       videos = await db.getVideosByStatus(status);
     } else {
       videos = await db.getVideos(limit, offset);
@@ -42,6 +46,7 @@ export async function GET(request: NextRequest) {
     const duration = Date.now() - startTime;
     Logger.apiSuccess(route, duration, { 
       videoCount: videos.length,
+      hasIds: !!idsParam,
       hasStatus: !!status 
     });
 
@@ -181,30 +186,52 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// DELETE /api/videos - Clear all videos
+// DELETE /api/videos - Clear all videos or specific videos
 export async function DELETE(request: NextRequest) {
   const startTime = Date.now();
   const route = '/api/videos';
-  
+
   try {
-    Logger.apiStart(route, { action: 'clear_all' });
-
     const db = await getDatabase();
-    const deletedCount = await db.clearAllVideos();
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      body = null; // No body or invalid JSON
+    }
 
-    const duration = Date.now() - startTime;
-    Logger.apiSuccess(route, duration, { deletedCount });
+    const videoIds = body?.videoIds;
 
-    return NextResponse.json({ 
-      message: 'All videos cleared', 
-      deletedCount 
-    });
+    if (Array.isArray(videoIds) && videoIds.length > 0) {
+      // Delete specific videos
+      Logger.apiStart(route, { action: 'delete_selected', count: videoIds.length });
+      const deletedCount = await db.deleteVideos(videoIds);
+      const duration = Date.now() - startTime;
+      Logger.apiSuccess(route, duration, { deletedCount });
+
+      return NextResponse.json({
+        message: 'Selected videos deleted',
+        deletedCount,
+      });
+
+    } else {
+      // Clear all videos (existing functionality)
+      Logger.apiStart(route, { action: 'clear_all' });
+      const deletedCount = await db.clearAllVideos();
+      const duration = Date.now() - startTime;
+      Logger.apiSuccess(route, duration, { deletedCount });
+
+      return NextResponse.json({
+        message: 'All videos cleared',
+        deletedCount,
+      });
+    }
   } catch (error) {
     const duration = Date.now() - startTime;
     Logger.apiError(route, duration, error);
-    
+
     return NextResponse.json(
-      { error: 'Failed to clear videos' },
+      { error: 'Failed to delete videos' },
       { status: 500 }
     );
   }
