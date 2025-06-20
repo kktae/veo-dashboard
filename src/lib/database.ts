@@ -5,6 +5,7 @@ export interface VideoRecord {
   id: string;
   korean_prompt: string;
   english_prompt: string;
+  user_email: string;
   status: 'pending' | 'translating' | 'generating' | 'processing' | 'completed' | 'error';
   video_url?: string;
   thumbnail_url?: string;
@@ -73,6 +74,7 @@ class VideoDatabase {
           id VARCHAR(255) PRIMARY KEY,
           korean_prompt TEXT NOT NULL,
           english_prompt TEXT DEFAULT '',
+          user_email VARCHAR(255) NOT NULL,
           status VARCHAR(50) NOT NULL DEFAULT 'pending',
           video_url TEXT,
           thumbnail_url TEXT,
@@ -93,6 +95,13 @@ class VideoDatabase {
       `;
       
       await this.pool.query(addGcsUriColumnSQL);
+      
+      // Add user_email column if it doesn't exist (for existing tables)
+      const addUserEmailColumnSQL = `
+        ALTER TABLE videos ADD COLUMN IF NOT EXISTS user_email VARCHAR(255);
+      `;
+      
+      await this.pool.query(addUserEmailColumnSQL);
       
       // Create indexes for better query performance
       const createIndexSQL = `
@@ -115,10 +124,10 @@ class VideoDatabase {
   async insertVideo(video: Omit<VideoRecord, 'created_at'> & { created_at?: string }): Promise<VideoRecord> {
     const insertSQL = `
       INSERT INTO videos (
-        id, korean_prompt, english_prompt, status, video_url, 
+        id, korean_prompt, english_prompt, user_email, status, video_url, 
         thumbnail_url, gcs_uri, duration, resolution, error_message, 
         created_at, completed_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `;
     
@@ -129,6 +138,7 @@ class VideoDatabase {
         video.id,
         video.korean_prompt,
         video.english_prompt,
+        video.user_email,
         video.status,
         video.video_url || null,
         video.thumbnail_url || null,
@@ -209,7 +219,11 @@ class VideoDatabase {
   async getVideos(limit: number = 50, offset: number = 0): Promise<VideoRecord[]> {
     const selectSQL = `
       SELECT * FROM videos 
-      ORDER BY created_at DESC 
+      ORDER BY 
+        CASE 
+          WHEN completed_at IS NOT NULL THEN completed_at 
+          ELSE created_at 
+        END DESC 
       LIMIT $1 OFFSET $2
     `;
     
@@ -234,7 +248,15 @@ class VideoDatabase {
 
   // Get videos by status
   async getVideosByStatus(status: VideoRecord['status']): Promise<VideoRecord[]> {
-    const selectSQL = 'SELECT * FROM videos WHERE status = $1 ORDER BY created_at DESC';
+    const selectSQL = `
+      SELECT * FROM videos 
+      WHERE status = $1 
+      ORDER BY 
+        CASE 
+          WHEN completed_at IS NOT NULL THEN completed_at 
+          ELSE created_at 
+        END DESC
+    `;
     
     try {
       const result = await this.pool.query(selectSQL, [status]);

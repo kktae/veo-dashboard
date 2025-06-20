@@ -24,6 +24,7 @@ const useVideoApi = () => {
     id: string;
     korean_prompt: string;
     english_prompt: string;
+    user_email: string;
     status: string;
   }) => {
     const response = await fetch('/api/videos', {
@@ -178,7 +179,7 @@ export function useVideoGeneration() {
     loadVideos();
   }, [fetchVideos]);
 
-  const generateVideo = useCallback(async (koreanPrompt: string, config: AIModelConfig) => {
+  const generateVideo = useCallback(async (koreanPrompt: string, config: AIModelConfig, userEmail: string) => {
     const startTime = Date.now();
     const id = uuidv4();
     
@@ -186,6 +187,7 @@ export function useVideoGeneration() {
       requestId: id,
       koreanPrompt: koreanPrompt.substring(0, 100) + '...',
       promptLength: koreanPrompt.length,
+      userEmail: userEmail,
       translationModel: config.translationModel,
       videoGenerationModel: config.videoGenerationModel,
       hasCustomPromptConfig: config.translationPromptConfig ? 'yes' : 'no'
@@ -195,6 +197,7 @@ export function useVideoGeneration() {
       id,
       koreanPrompt,
       englishPrompt: '',
+      userEmail,
       status: 'pending',
       createdAt: new Date(),
     };
@@ -213,6 +216,7 @@ export function useVideoGeneration() {
         id: newResult.id,
         korean_prompt: newResult.koreanPrompt,
         english_prompt: newResult.englishPrompt,
+        user_email: userEmail,
         status: newResult.status
       });
 

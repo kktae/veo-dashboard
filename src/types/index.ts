@@ -1,5 +1,6 @@
 export interface VideoGenerationRequest {
   koreanPrompt: string;
+  userEmail: string;
 }
 
 export interface TranslationResult {
@@ -11,6 +12,7 @@ export interface VideoGenerationResult {
   id: string;
   koreanPrompt: string;
   englishPrompt: string;
+  userEmail: string;
   status: 'pending' | 'translating' | 'generating' | 'processing' | 'completed' | 'error';
   videoUrl?: string;
   thumbnailUrl?: string;

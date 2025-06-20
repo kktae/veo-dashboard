@@ -98,14 +98,18 @@ export function VideoResultCard({ result, isSelected = false, onToggleSelection 
       {/* Content - Flexible height */}
       <CardContent className="pt-0 flex-1 flex flex-col min-h-0 pb-4">
         <div className="space-y-3 flex-1 flex flex-col min-h-0">
-          {/* Timestamp - Fixed height */}
-          <div className="text-xs text-muted-foreground flex-shrink-0 h-[20px]">
-            {formatTimestamp(result.createdAt)}
-            {result.completedAt && (
-              <span className="ml-2">
-                • {formatTimestamp(result.completedAt, '완료')}
-              </span>
-            )}
+          {/* User and Timestamp - Fixed height */}
+          <div className="text-xs text-muted-foreground flex-shrink-0 space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-blue-600">{result.userEmail}</span>
+              <span>•</span>
+              <span>{formatTimestamp(result.createdAt)}</span>
+              {result.completedAt && (
+                <span>
+                  • {formatTimestamp(result.completedAt, '완료')}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Error display */}

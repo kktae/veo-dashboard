@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -16,20 +17,22 @@ import {
 } from '@/types';
 
 interface VideoPromptFormProps {
-  onSubmit: (prompt: string, config: AIModelConfig) => void;
+  onSubmit: (prompt: string, config: AIModelConfig, userEmail: string) => void;
   isLoading: boolean;
 }
 
 export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
   const [prompt, setPrompt] = useState('');
+  const [userEmail, setUserEmail] = useState('');
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [config, setConfig] = useState<AIModelConfig>(DEFAULT_AI_MODEL_CONFIG);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (prompt.trim() && !isLoading) {
-      onSubmit(prompt.trim(), config);
+    if (prompt.trim() && userEmail.trim() && !isLoading) {
+      onSubmit(prompt.trim(), config, userEmail.trim());
       setPrompt('');
+      setUserEmail('');
     }
   };
 
@@ -74,6 +77,20 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
       </CardHeader>
       <CardContent className="space-y-6">
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* User Email Input */}
+          <div className="space-y-2">
+            <Label htmlFor="user-email">사용자 이메일</Label>
+            <Input
+              id="user-email"
+              type="email"
+              value={userEmail}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUserEmail(e.target.value)}
+              placeholder="example@email.com"
+              required
+              disabled={isLoading}
+            />
+          </div>
+
           {/* Main Prompt Input */}
           <div className="space-y-2">
             <Label htmlFor="prompt">비디오 프롬프트</Label>
@@ -209,7 +226,7 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
           {/* Submit Button */}
           <Button
             type="submit"
-            disabled={!prompt.trim() || isLoading}
+            disabled={!prompt.trim() || !userEmail.trim() || isLoading}
             className="w-full"
             size="lg"
           >

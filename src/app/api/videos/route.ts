@@ -69,22 +69,24 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { id, korean_prompt, english_prompt, status } = body;
+    const { id, korean_prompt, english_prompt, user_email, status } = body;
 
     Logger.apiStart(route, { 
       id, 
       korean_prompt: korean_prompt?.substring(0, 50) + '...',
+      user_email,
       status 
     });
 
-    if (!id || !korean_prompt) {
+    if (!id || !korean_prompt || !user_email) {
       Logger.warn('Video creation request missing required fields', { 
         route, 
         hasId: !!id, 
-        hasKoreanPrompt: !!korean_prompt 
+        hasKoreanPrompt: !!korean_prompt,
+        hasUserEmail: !!user_email
       });
       return NextResponse.json(
-        { error: 'ID and Korean prompt are required' },
+        { error: 'ID, Korean prompt, and user email are required' },
         { status: 400 }
       );
     }
@@ -106,6 +108,7 @@ export async function POST(request: NextRequest) {
       id,
       korean_prompt,
       english_prompt: english_prompt || '',
+      user_email,
       status: status || 'pending'
     });
 
