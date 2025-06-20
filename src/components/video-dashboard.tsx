@@ -11,6 +11,7 @@ import { Trash2, Video, Check, X, Loader2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { Logger } from '@/lib/logger';
 
 export function VideoDashboard() {
   const { 
@@ -58,10 +59,22 @@ export function VideoDashboard() {
       return;
     }
     setIsDeleting(true);
-    await deleteSelectedVideos(deleteKey);
-    setIsDeleting(false);
-    setIsDeleteDialogOpen(false);
-    setDeleteKey('');
+    const toastId = toast.loading('선택한 비디오를 삭제 중입니다...');
+    try {
+      await deleteSelectedVideos(deleteKey);
+      toast.success('선택한 비디오를 성공적으로 삭제했습니다.', { id: toastId });
+      setIsDeleteDialogOpen(false);
+      setDeleteKey('');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+      toast.error('삭제에 실패했습니다.', {
+        id: toastId,
+        description: errorMessage,
+      });
+      Logger.warn('Client - handleDeleteSelected failed', { error: errorMessage });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleClearAll = async () => {
@@ -70,10 +83,22 @@ export function VideoDashboard() {
       return;
     }
     setIsDeleting(true);
-    await clearResults(deleteKey);
-    setIsDeleting(false);
-    setIsClearAllDialogOpen(false);
-    setDeleteKey('');
+    const toastId = toast.loading('모든 비디오를 삭제 중입니다...');
+    try {
+      await clearResults(deleteKey);
+      toast.success('모든 비디오를 성공적으로 삭제했습니다.', { id: toastId });
+      setIsClearAllDialogOpen(false);
+      setDeleteKey('');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+      toast.error('삭제에 실패했습니다.', {
+        id: toastId,
+        description: errorMessage,
+      });
+      Logger.warn('Client - handleClearAll failed', { error: errorMessage });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (!isMounted) {

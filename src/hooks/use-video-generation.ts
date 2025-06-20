@@ -318,49 +318,21 @@ export function useVideoGeneration() {
       toast.info('삭제할 비디오를 선택해주세요.');
       return;
     }
-
-    const toastId = toast.loading(`${videoIdsToDelete.length}개의 비디오를 삭제 중입니다...`);
-    
-    try {
-      await deleteVideos(videoIdsToDelete, deleteKey);
-      
-      setState(prev => ({
-        ...prev,
-        results: prev.results.filter(r => !videoIdsToDelete.includes(r.id)),
-        selectedIds: [],
-      }));
-      
-      toast.success('선택한 비디오를 성공적으로 삭제했습니다.', { id: toastId });
-    } catch (error) {
-      Logger.error('Client - Failed to delete selected videos', { 
-        error: error instanceof Error ? error.message : error 
-      });
-      toast.error('비디오 삭제에 실패했습니다.', {
-        id: toastId,
-        description: error instanceof Error ? error.message : String(error),
-      });
-    }
+    await deleteVideos(videoIdsToDelete, deleteKey);
+    setState(prev => ({
+      ...prev,
+      results: prev.results.filter(r => !videoIdsToDelete.includes(r.id)),
+      selectedIds: [],
+    }));
   }, [state.selectedIds, deleteVideos]);
 
   const clearResults = useCallback(async (deleteKey: string) => {
-    const toastId = toast.loading('모든 비디오를 삭제 중입니다...');
-    try {
-      await clearAllVideos(deleteKey);
-      setState(prev => ({
-        ...prev,
-        results: [],
-        selectedIds: [],
-      }));
-      toast.success('모든 비디오를 성공적으로 삭제했습니다.', { id: toastId });
-    } catch (error) {
-      Logger.error('Client - Failed to clear results', { 
-        error: error instanceof Error ? error.message : error 
-      });
-      toast.error('모든 비디오 삭제에 실패했습니다.', {
-        id: toastId,
-        description: error instanceof Error ? error.message : String(error),
-      });
-    }
+    await clearAllVideos(deleteKey);
+    setState(prev => ({
+      ...prev,
+      results: [],
+      selectedIds: [],
+    }));
   }, [clearAllVideos]);
 
   const toggleVideoSelection = useCallback((videoId: string) => {
