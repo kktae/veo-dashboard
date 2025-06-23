@@ -88,8 +88,3 @@ export async function GET() {
     );
   }
 }
-
-// 다른 API에서 사용할 수 있는 헬퍼 함수
-export async function isVideoGenerationAllowed(): Promise<boolean> {
-  return await getVideoGenerationStatus();
-} 
