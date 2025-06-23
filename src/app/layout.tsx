@@ -30,10 +30,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-white`}
       >
         <Navigation />
-        <main className="container mx-auto px-4 py-8">
+        <main className="container mx-auto px-4 py-8 bg-white min-h-screen">
           {children}
         </main>
         <Toaster richColors />

@@ -93,7 +93,7 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
   };
 
   return (
-    <Card className="w-full max-w-4xl">
+    <Card className="w-full max-w-4xl transition-all duration-200 hover:shadow-lg hover:border-blue-500 hover:-translate-y-1">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Settings className="h-5 w-5" />

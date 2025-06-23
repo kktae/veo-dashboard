@@ -49,7 +49,7 @@ export function VideoResultCard({ result, isSelected = false, onToggleSelection 
   };
 
   return (
-    <Card className={`w-full flex flex-col transition-all duration-200 hover:shadow-md ${
+    <Card className={`w-full flex flex-col transition-all duration-200 hover:shadow-lg hover:border-blue-500 hover:-translate-y-1 ${
       isSelected ? 'ring-2 ring-blue-500 ring-offset-2' : ''
     }`}>
       <CardHeader className="p-4 flex-shrink-0">

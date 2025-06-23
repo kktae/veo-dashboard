@@ -103,7 +103,7 @@ export function VideoDashboard() {
 
   if (!isMounted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="min-h-screen bg-white p-4">
         <div className="mx-auto max-w-6xl space-y-8">
           <div className="text-center space-y-4">
             <div className="flex items-center justify-center gap-3">
@@ -117,7 +117,7 @@ export function VideoDashboard() {
             </p>
           </div>
           <div className="flex justify-center">
-            <div className="w-full max-w-2xl bg-white rounded-lg shadow-sm p-8">
+            <div className="w-full max-w-2xl bg-white rounded-lg shadow-sm border p-8">
               <div className="animate-pulse space-y-4">
                 <div className="h-4 bg-gray-200 rounded w-3/4"></div>
                 <div className="h-32 bg-gray-200 rounded"></div>
@@ -133,7 +133,7 @@ export function VideoDashboard() {
   const allSelected = results.length > 0 && selectedIds.length === results.length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen bg-white p-4">
       <div className="mx-auto max-w-6xl space-y-8">
         {/* Header */}
         <div className="text-center space-y-4">
