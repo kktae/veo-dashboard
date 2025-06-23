@@ -1,5 +1,33 @@
 import { VideoSyncStatus } from '@/components/video-sync-status';
 import { AdminControlPanel } from '@/components/admin-control-panel';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: '관리자 대시보드',
+  description: 'VEO Dashboard 시스템 관리 및 비디오 동기화 상태를 확인하고 관리할 수 있는 관리자 전용 페이지입니다.',
+  robots: {
+    index: false,
+    follow: false,
+  },
+  openGraph: {
+    title: '관리자 대시보드 | VEO Dashboard',
+    description: 'VEO Dashboard 시스템 관리 및 비디오 동기화 상태를 확인하고 관리할 수 있는 관리자 전용 페이지입니다.',
+    type: 'website',
+    images: [
+      {
+        url: 'https://veo.kakao-ai-hackathon-mzc.com/admin/opengraph-image',
+        width: 1200,
+        height: 630,
+        alt: 'VEO Dashboard 관리자 대시보드',
+      },
+    ],
+  },
+  twitter: {
+    title: '관리자 대시보드 | VEO Dashboard',
+    description: 'VEO Dashboard 시스템 관리 및 비디오 동기화 상태를 확인하고 관리할 수 있는 관리자 전용 페이지입니다.',
+    images: ['https://veo.kakao-ai-hackathon-mzc.com/admin/twitter-image'],
+  },
+};
 
 export default function AdminPage() {
   return (

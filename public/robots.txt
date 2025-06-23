@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+# Allow OG image generation routes
+Allow: /opengraph-image
+Allow: /twitter-image
+Allow: /admin/opengraph-image
+Allow: /admin/twitter-image
+
+# Allow favicon and other assets
+Allow: /favicon.ico
+Allow: /favicon.svg
+
+# SEO optimizations
+Sitemap: https://veo.kakao-ai-hackathon-mzc.com/sitemap.xml 
