@@ -92,10 +92,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   
   try {
     const { deleteKey } = await request.json();
-    const adminKey = process.env.ADMIN_DELETE_KEY;
+    const adminKey = process.env.ADMIN_SECRET_KEY;
 
     if (!adminKey) {
-      const message = 'ADMIN_DELETE_KEY is not configured on the server.';
+      const message = 'ADMIN_SECRET_KEY is not configured on the server.';
       Logger.error(message, { route, id });
       return NextResponse.json(
         { error: 'Server is not configured for deletions.' },

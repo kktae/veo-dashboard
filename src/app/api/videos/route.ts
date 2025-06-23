@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDatabase, VideoRecord } from '@/lib/database';
+import { getDatabase, VideoRecord, isVideoGenerationEnabled } from '@/lib/database';
 import { initializeVideoSync } from '@/lib/video-sync';
 import { Logger } from '@/lib/logger';
 
@@ -73,6 +73,17 @@ export async function POST(request: NextRequest) {
   const route = '/api/videos';
   
   try {
+    // 1. 가장 먼저 비디오 생성 기능 활성화 상태 확인
+    const isGenerationEnabled = await isVideoGenerationEnabled();
+    if (!isGenerationEnabled) {
+      Logger.warn('Video record creation blocked - video generation is currently disabled by admin', { route });
+      return NextResponse.json(
+        { error: 'Video generation is currently disabled. Please contact admin.' },
+        { status: 503 }
+      );
+    }
+
+    // 2. 요청 데이터 파싱
     const body = await request.json();
     const { id, korean_prompt, english_prompt, user_email, status } = body;
 
@@ -83,6 +94,7 @@ export async function POST(request: NextRequest) {
       status 
     });
 
+    // 3. 필수 파라미터 검증
     if (!id || !korean_prompt || !user_email) {
       Logger.warn('Video creation request missing required fields', { 
         route, 
@@ -201,10 +213,10 @@ export async function DELETE(request: NextRequest) {
     }
     
     const { deleteKey, videoIds, deleteAll } = body;
-    const adminKey = process.env.ADMIN_DELETE_KEY;
+    const adminKey = process.env.ADMIN_SECRET_KEY;
 
     if (!adminKey) {
-      const message = 'ADMIN_DELETE_KEY is not configured on the server.';
+      const message = 'ADMIN_SECRET_KEY is not configured on the server.';
       Logger.error(message, { route });
       return NextResponse.json({ error: '서버가 삭제 기능을 사용하도록 구성되지 않았습니다.' }, { status: 500 });
     }

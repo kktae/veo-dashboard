@@ -1,5 +1,6 @@
 import { VideoDashboard } from '@/components/video-dashboard';
 import { VideoSyncStatus } from '@/components/video-sync-status';
+import { AdminControlPanel } from '@/components/admin-control-panel';
 
 export default function Home() {
   return (
@@ -7,6 +8,9 @@ export default function Home() {
       <VideoDashboard />
       <div className="flex justify-center">
         <VideoSyncStatus />
+      </div>
+      <div className="flex justify-center">
+        <AdminControlPanel />
       </div>
     </div>
   );

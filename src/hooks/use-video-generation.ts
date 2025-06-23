@@ -230,6 +230,28 @@ export function useVideoGeneration() {
       userEmail,
     });
 
+    // 1. 먼저 관리자 기능 상태 확인 (DB 저장 전)
+    try {
+      const statusResponse = await fetch('/api/admin/toggle-feature', {
+        method: 'GET',
+      });
+      
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json();
+        if (!statusData.videoGenerationEnabled) {
+          Logger.warn('Client - Video generation blocked by admin', { id });
+          setState(prev => ({
+            ...prev,
+            error: 'Video generation is currently disabled. Please contact admin.',
+            isLoading: false,
+          }));
+          return;
+        }
+      }
+    } catch (error) {
+      Logger.warn('Client - Failed to check admin status, proceeding with generation', { id, error });
+    }
+
     const newResult: VideoGenerationResult = {
       id,
       koreanPrompt,
@@ -248,7 +270,7 @@ export function useVideoGeneration() {
     }));
 
     try {
-      // Create initial DB record
+      // 2. Create initial DB record (관리자 체크 통과 후)
       await createVideo({
         id: newResult.id,
         korean_prompt: newResult.koreanPrompt,
@@ -258,7 +280,7 @@ export function useVideoGeneration() {
       });
       Logger.step('Client - Initial video record saved', { id });
 
-      // Start the entire generation workflow on the server
+      // 3. Start the entire generation workflow on the server
       const response = await fetch('/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -277,7 +299,7 @@ export function useVideoGeneration() {
 
       const resultData = await response.json();
       
-      // Update local state to 'generating'
+      // 4. Update local state to 'generating'
       setState(prev => ({
         ...prev,
         isLoading: false,

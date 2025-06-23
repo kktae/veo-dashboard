@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { VideoGenerationService } from '@/lib/ai';
 import { Logger } from '@/lib/logger';
-import { updateVideoRecord } from '@/lib/database';
+import { updateVideoRecord, isVideoGenerationEnabled } from '@/lib/database';
 import { validateResolution } from '@/lib/video-utils';
 import { AIModelConfig } from '@/types';
+
+// 비디오 생성 기능 상태 확인 함수
+async function checkVideoGenerationStatus(): Promise<boolean> {
+  try {
+    return await isVideoGenerationEnabled();
+  } catch (error) {
+    Logger.warn('Failed to check video generation status from database, defaulting to enabled', { error });
+    return true; // 에러 시 기본적으로 활성화
+  }
+}
 
 async function translateText(koreanText: string, config: AIModelConfig, videoId: string): Promise<string> {
   Logger.step('Starting translation process', { videoId, model: config.translationModel });
@@ -35,6 +45,17 @@ export async function POST(request: NextRequest) {
   let videoId: string | null = null;
   
   try {
+    // 1. 가장 먼저 비디오 생성 기능 활성화 상태 확인
+    const isGenerationEnabled = await checkVideoGenerationStatus();
+    if (!isGenerationEnabled) {
+      Logger.warn('Video generation is currently disabled by admin - request blocked before processing', { route });
+      return NextResponse.json(
+        { error: 'Video generation is currently disabled. Please contact admin.' },
+        { status: 503 }
+      );
+    }
+
+    // 2. 요청 데이터 파싱
     const { 
       videoId: reqVideoId,
       koreanPrompt,
@@ -51,6 +72,7 @@ export async function POST(request: NextRequest) {
       model: config.videoGenerationModel,
     });
 
+    // 3. 필수 파라미터 검증
     if (!koreanPrompt || !videoId || !config || !userEmail) {
       Logger.warn('Video generation request missing required parameters', { 
         route, 
@@ -65,18 +87,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Translate Korean prompt to English
+    // 4. Translate Korean prompt to English
     const englishPrompt = await translateText(koreanPrompt, config, videoId);
 
-    // 2. Update database status to generating and save English prompt
+    // 5. Update database status to generating and save English prompt
     await updateVideoRecord(videoId, { 
       status: 'generating',
       english_prompt: englishPrompt
     });
     Logger.step('Database updated with translated prompt and generating status', { videoId });
 
-
-    // 3. Start background processing (don't await)
+    // 6. Start background processing (don't await)
     processVideoGeneration(
       videoId, 
       englishPrompt, 
@@ -90,7 +111,7 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    // 4. Return immediate success response
+    // 7. Return immediate success response
     const duration = Date.now() - startTime;
     Logger.apiSuccess(route, duration, {
       videoId,

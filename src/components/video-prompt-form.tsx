@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Send, Loader2, ChevronDown, ChevronRight, Settings, Clock } from 'lucide-react';
+import { Send, Loader2, ChevronDown, ChevronRight, Settings, Clock, Lock } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { 
   DEFAULT_TRANSLATION_MODELS, 
@@ -27,6 +28,28 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
   const [userEmail, setUserEmail] = useState('');
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [config, setConfig] = useState<AIModelConfig>(DEFAULT_AI_MODEL_CONFIG);
+  const [videoGenerationEnabled, setVideoGenerationEnabled] = useState<boolean | null>(null);
+
+  // 컴포넌트 마운트 시 비디오 생성 기능 상태 확인
+  useEffect(() => {
+    checkVideoGenerationStatus();
+  }, []);
+
+  const checkVideoGenerationStatus = async () => {
+    try {
+      const response = await fetch('/api/admin/toggle-feature', {
+        method: 'GET',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setVideoGenerationEnabled(data.videoGenerationEnabled);
+      }
+    } catch (error) {
+      console.error('Failed to check video generation status:', error);
+      setVideoGenerationEnabled(true); // 에러 시 기본적으로 활성화
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +104,17 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Video Generation Status Alert */}
+        {videoGenerationEnabled === false && (
+          <Alert className="border-red-200 bg-red-50">
+            <Lock className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-800">
+              <strong>비디오 생성 기능이 일시적으로 비활성화되어 있습니다.</strong><br />
+              관리자에 의해 기능이 비활성화되었습니다. 관리자에게 문의하시거나 잠시 후 다시 시도해주세요.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* User Email Input */}
           <div className="space-y-2">
@@ -254,11 +288,16 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
           {/* Submit Button */}
           <Button
             type="submit"
-            disabled={!prompt.trim() || !userEmail.trim() || isLoading}
+            disabled={!prompt.trim() || !userEmail.trim() || isLoading || videoGenerationEnabled === false}
             className="w-full"
             size="lg"
           >
-            {isLoading ? (
+            {videoGenerationEnabled === false ? (
+              <>
+                <Lock className="mr-2 h-4 w-4" />
+                비디오 생성 기능 비활성화됨
+              </>
+            ) : isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 비디오 생성 중...

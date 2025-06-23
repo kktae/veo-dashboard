@@ -17,6 +17,13 @@ export interface VideoRecord {
   completed_at?: string;
 }
 
+export interface AdminSetting {
+  key: string;
+  value: string;
+  description?: string;
+  updated_at: string;
+}
+
 class VideoDatabase {
   private pool: Pool;
 
@@ -89,6 +96,18 @@ class VideoDatabase {
       
       await this.pool.query(createTableSQL);
       
+      // Create admin_settings table if it doesn't exist
+      const createAdminSettingsTableSQL = `
+        CREATE TABLE IF NOT EXISTS admin_settings (
+          key VARCHAR(255) PRIMARY KEY,
+          value TEXT NOT NULL,
+          description TEXT,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `;
+      
+      await this.pool.query(createAdminSettingsTableSQL);
+      
       // Add gcs_uri column if it doesn't exist (for existing tables)
       const addGcsUriColumnSQL = `
         ALTER TABLE videos ADD COLUMN IF NOT EXISTS gcs_uri TEXT;
@@ -107,9 +126,13 @@ class VideoDatabase {
       const createIndexSQL = `
         CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
+        CREATE INDEX IF NOT EXISTS idx_admin_settings_key ON admin_settings(key);
       `;
       
       await this.pool.query(createIndexSQL);
+      
+      // Initialize default admin settings if they don't exist
+      await this.initializeDefaultAdminSettings();
       
       Logger.info('PostgreSQL database tables and indexes created');
     } catch (error) {
@@ -117,6 +140,33 @@ class VideoDatabase {
         error: error instanceof Error ? error.message : error
       });
       throw error;
+    }
+  }
+
+  private async initializeDefaultAdminSettings() {
+    try {
+      // Initialize video generation enabled setting
+      const checkSettingSQL = 'SELECT * FROM admin_settings WHERE key = $1';
+      const videoGenResult = await this.pool.query(checkSettingSQL, ['video_generation_enabled']);
+      
+      if (videoGenResult.rows.length === 0) {
+        const insertSettingSQL = `
+          INSERT INTO admin_settings (key, value, description, updated_at)
+          VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        `;
+        
+        await this.pool.query(insertSettingSQL, [
+          'video_generation_enabled',
+          'true',
+          'Controls whether video generation feature is enabled for users'
+        ]);
+        
+        Logger.info('Default admin setting initialized: video_generation_enabled = true');
+      }
+    } catch (error) {
+      Logger.error('Failed to initialize default admin settings', {
+        error: error instanceof Error ? error.message : error
+      });
     }
   }
 
@@ -394,6 +444,127 @@ class VideoDatabase {
     }
   }
 
+  // Admin Settings Management
+  async getAdminSetting(key: string): Promise<AdminSetting | null> {
+    const selectSQL = 'SELECT * FROM admin_settings WHERE key = $1';
+    
+    try {
+      const result = await this.pool.query(selectSQL, [key]);
+      
+      if (result.rows.length > 0) {
+        const setting = result.rows[0] as AdminSetting;
+        Logger.debug('Database - Admin setting retrieved', { key, value: setting.value });
+        return setting;
+      } else {
+        Logger.debug('Database - Admin setting not found', { key });
+        return null;
+      }
+    } catch (error) {
+      Logger.error('Database - Failed to get admin setting', { 
+        key, 
+        error: error instanceof Error ? error.message : error 
+      });
+      throw error;
+    }
+  }
+
+  async setAdminSetting(key: string, value: string, description?: string): Promise<AdminSetting> {
+    const upsertSQL = `
+      INSERT INTO admin_settings (key, value, description, updated_at)
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      ON CONFLICT (key) DO UPDATE SET
+        value = EXCLUDED.value,
+        description = COALESCE(EXCLUDED.description, admin_settings.description),
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `;
+    
+    try {
+      const result = await this.pool.query(upsertSQL, [key, value, description]);
+      const setting = result.rows[0] as AdminSetting;
+      
+      Logger.step('Database - Admin setting updated', { key, value, description });
+      return setting;
+    } catch (error) {
+      Logger.error('Database - Failed to set admin setting', { 
+        key, 
+        value, 
+        error: error instanceof Error ? error.message : error 
+      });
+      throw error;
+    }
+  }
+
+  async getAllAdminSettings(): Promise<AdminSetting[]> {
+    const selectSQL = 'SELECT * FROM admin_settings ORDER BY key';
+    
+    try {
+      const result = await this.pool.query(selectSQL);
+      const settings = result.rows as AdminSetting[];
+      
+      Logger.debug('Database - All admin settings retrieved', { count: settings.length });
+      return settings;
+    } catch (error) {
+      Logger.error('Database - Failed to get all admin settings', { 
+        error: error instanceof Error ? error.message : error 
+      });
+      throw error;
+    }
+  }
+
+  async deleteAdminSetting(key: string): Promise<boolean> {
+    const deleteSQL = 'DELETE FROM admin_settings WHERE key = $1';
+    
+    try {
+      const result = await this.pool.query(deleteSQL, [key]);
+      const deleted = (result.rowCount ?? 0) > 0;
+      
+      if (deleted) {
+        Logger.step('Database - Admin setting deleted', { key });
+      } else {
+        Logger.warn('Database - No admin setting found to delete', { key });
+      }
+      
+      return deleted;
+    } catch (error) {
+      Logger.error('Database - Failed to delete admin setting', { 
+        key, 
+        error: error instanceof Error ? error.message : error 
+      });
+      throw error;
+    }
+  }
+
+  // Video Generation Feature Control
+  async isVideoGenerationEnabled(): Promise<boolean> {
+    try {
+      const setting = await this.getAdminSetting('video_generation_enabled');
+      return setting ? setting.value.toLowerCase() === 'true' : true; // Default to enabled
+    } catch (error) {
+      Logger.error('Database - Failed to check video generation status', { 
+        error: error instanceof Error ? error.message : error 
+      });
+      return true; // Default to enabled on error
+    }
+  }
+
+  async setVideoGenerationEnabled(enabled: boolean): Promise<void> {
+    try {
+      await this.setAdminSetting(
+        'video_generation_enabled',
+        enabled.toString(),
+        'Controls whether video generation feature is enabled for users'
+      );
+      Logger.step('Database - Video generation setting updated', { enabled });
+    } catch (error) {
+      Logger.error('Database - Failed to set video generation status', { 
+        enabled,
+        error: error instanceof Error ? error.message : error 
+      });
+      throw error;
+    }
+  }
+
   // Close database connection
   async close(): Promise<void> {
     await this.pool.end();
@@ -454,4 +625,36 @@ export async function deleteVideoRecord(id: string): Promise<boolean> {
 export async function clearAllVideoRecords(): Promise<number> {
   const db = await getDatabase();
   return db.clearAllVideos();
+}
+
+// Admin Settings utility functions
+export async function getAdminSetting(key: string): Promise<AdminSetting | null> {
+  const db = await getDatabase();
+  return db.getAdminSetting(key);
+}
+
+export async function setAdminSetting(key: string, value: string, description?: string): Promise<AdminSetting> {
+  const db = await getDatabase();
+  return db.setAdminSetting(key, value, description);
+}
+
+export async function getAllAdminSettings(): Promise<AdminSetting[]> {
+  const db = await getDatabase();
+  return db.getAllAdminSettings();
+}
+
+export async function deleteAdminSetting(key: string): Promise<boolean> {
+  const db = await getDatabase();
+  return db.deleteAdminSetting(key);
+}
+
+// Video Generation Feature Control utility functions
+export async function isVideoGenerationEnabled(): Promise<boolean> {
+  const db = await getDatabase();
+  return db.isVideoGenerationEnabled();
+}
+
+export async function setVideoGenerationEnabled(enabled: boolean): Promise<void> {
+  const db = await getDatabase();
+  return db.setVideoGenerationEnabled(enabled);
 } 
