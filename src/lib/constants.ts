@@ -51,7 +51,7 @@ export const STATUS_INFO = {
 
 // API Configuration
 export const API_CONFIG = {
-  POLLING_INTERVAL: 3000,
+  POLLING_INTERVAL: 2000, // Reduced from 3000 to 2000ms for better responsiveness
   MAX_RETRIES: 3,
   RETRY_BASE_DELAY: 5000,
   REQUEST_TIMEOUT: 10000

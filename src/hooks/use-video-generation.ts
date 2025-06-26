@@ -86,9 +86,18 @@ const useVideoPolling = (
   shouldPoll: boolean
 ) => {
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const resultsRef = useRef<VideoGenerationResult[]>(results);
+  const onUpdateRef = useRef(onUpdate);
+  
+  // Update refs when props change
+  useEffect(() => {
+    resultsRef.current = results;
+    onUpdateRef.current = onUpdate;
+  }, [results, onUpdate]);
   
   const poll = useCallback(async () => {
-    const progressingVideos = results.filter(video => isProgressingStatus(video.status));
+    const currentResults = resultsRef.current;
+    const progressingVideos = currentResults.filter(video => isProgressingStatus(video.status));
     
     if (progressingVideos.length === 0) {
       if (pollingIntervalRef.current) {
@@ -101,6 +110,12 @@ const useVideoPolling = (
     
     try {
       const idsToPoll = progressingVideos.map(v => v.id).join(',');
+      Logger.debug('Client - Polling videos', { 
+        count: progressingVideos.length, 
+        ids: idsToPoll,
+        statuses: progressingVideos.map((v: VideoGenerationResult) => `${v.id}:${v.status}`).join(', ')
+      });
+      
       const response = await fetch(`/api/videos?ids=${idsToPoll}`);
       
       if (!response.ok) {
@@ -111,14 +126,18 @@ const useVideoPolling = (
       const updatedVideos = (data.videos || []).map(convertDatabaseRecordToResult);
       
       if (updatedVideos.length > 0) {
-        onUpdate(updatedVideos);
+        Logger.debug('Client - Video updates received', {
+          count: updatedVideos.length,
+          updates: updatedVideos.map((v: VideoGenerationResult) => `${v.id}:${v.status}`).join(', ')
+        });
+        onUpdateRef.current(updatedVideos);
       }
     } catch (error) {
       Logger.error('Client - Polling error', {
         error: error instanceof Error ? error.message : error
       });
     }
-  }, [results, onUpdate]);
+  }, []); // Remove dependencies to prevent unnecessary re-creation
 
   useEffect(() => {
     if (shouldPoll) {
@@ -140,9 +159,21 @@ const useVideoPolling = (
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
     };
   }, [shouldPoll, poll]);
+  
+  // Additional cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+        Logger.info('Client - Polling cleanup on component unmount');
+      }
+    };
+  }, []);
 };
 
 export function useVideoGeneration() {
@@ -164,6 +195,21 @@ export function useVideoGeneration() {
     setState(prev => {
       const updatedResults = prev.results.map(existingVideo => {
         const updated = updatedVideos.find(v => v.id === existingVideo.id);
+        
+        // Check if video just completed
+        if (updated && updated.status === 'completed' && existingVideo.status !== 'completed') {
+          Logger.info('Client - Video completed', { videoId: updated.id });
+          // Show notification for completed video
+          if (typeof window !== 'undefined' && 'Notification' in window) {
+            if (Notification.permission === 'granted') {
+              new Notification('영상 생성 완료!', {
+                body: `"${updated.koreanPrompt.substring(0, 50)}..." 영상이 완성되었습니다.`,
+                icon: '/favicon.ico'
+              });
+            }
+          }
+        }
+        
         return updated || existingVideo;
       });
       return { ...prev, results: updatedResults };
@@ -208,9 +254,18 @@ export function useVideoGeneration() {
     }
   }, [fetchVideos]);
 
-  // Load initial videos on mount
+  // Load initial videos on mount and request notification permission
   useEffect(() => {
     loadVideos(0);
+    
+    // Request notification permission for video completion alerts
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          Logger.info('Client - Notification permission', { permission });
+        });
+      }
+    }
   }, [loadVideos]);
 
   const loadMoreVideos = useCallback(() => {
