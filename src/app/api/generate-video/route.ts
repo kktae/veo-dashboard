@@ -101,9 +101,7 @@ export async function POST(request: NextRequest) {
     processVideoGeneration(
       videoId, 
       englishPrompt, 
-      config.videoGenerationModel, 
-      0, 
-      config.durationSeconds
+      config
     ).catch(error => {
       Logger.error('Background video generation failed to start', {
         videoId,
@@ -147,7 +145,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Background processing function
-async function processVideoGeneration(videoId: string, englishPrompt: string, model: string, retryCount: number = 0, durationSeconds?: number) {
+async function processVideoGeneration(videoId: string, englishPrompt: string, config: AIModelConfig, retryCount: number = 0) {
   const startTime = Date.now();
   const maxRetries = 3;
   
@@ -157,7 +155,11 @@ async function processVideoGeneration(videoId: string, englishPrompt: string, mo
       promptLength: englishPrompt.length,
       preview: englishPrompt.substring(0, 100) + '...',
       outputUri: process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI,
-      model,
+      model: config.videoGenerationModel,
+      durationSeconds: config.durationSeconds,
+      enhancePrompt: config.enhancePrompt,
+      generateAudio: config.generateAudio,
+      hasNegativePrompt: !!config.negativePrompt,
       retryCount,
       maxRetries
     });
@@ -165,8 +167,11 @@ async function processVideoGeneration(videoId: string, englishPrompt: string, mo
     const videos = await VideoGenerationService.generateVideo(
       englishPrompt,
       process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI,
-      model,
-      durationSeconds
+      config.videoGenerationModel,
+      config.durationSeconds,
+      config.enhancePrompt,
+      config.generateAudio,
+      config.negativePrompt
     );
 
     if (!videos || videos.length === 0) {
@@ -249,7 +254,7 @@ async function processVideoGeneration(videoId: string, englishPrompt: string, mo
 
       // Schedule retry
       setTimeout(() => {
-        processVideoGeneration(videoId, englishPrompt, model, retryCount + 1, durationSeconds).catch(retryError => {
+        processVideoGeneration(videoId, englishPrompt, config, retryCount + 1).catch(retryError => {
           Logger.error('Retry also failed', {
             videoId,
             retryCount: retryCount + 1,

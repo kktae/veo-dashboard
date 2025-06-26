@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Send, Loader2, ChevronDown, ChevronRight, Settings, Clock, Lock } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Send, Loader2, ChevronDown, ChevronRight, Settings, Clock, Lock, Volume2, VolumeX, Sparkles, X } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { 
   DEFAULT_TRANSLATION_MODELS, 
@@ -65,7 +66,12 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
   };
 
   const updateVideoGenerationModel = (model: string) => {
-    setConfig(prev => ({ ...prev, videoGenerationModel: model }));
+    setConfig(prev => ({
+      ...prev,
+      videoGenerationModel: model,
+      // Veo 3.0은 8초 고정이므로 자동으로 8초로 설정
+      durationSeconds: model === 'veo-3.0-generate-preview' ? 8 : prev.durationSeconds
+    }));
   };
 
   const updateDuration = (duration: number[]) => {
@@ -90,6 +96,18 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
         userPromptTemplate: template
       }
     }));
+  };
+
+  const updateEnhancePrompt = (enabled: boolean) => {
+    setConfig(prev => ({ ...prev, enhancePrompt: enabled }));
+  };
+
+  const updateGenerateAudio = (enabled: boolean) => {
+    setConfig(prev => ({ ...prev, generateAudio: enabled }));
+  };
+
+  const updateNegativePrompt = (prompt: string) => {
+    setConfig(prev => ({ ...prev, negativePrompt: prompt }));
   };
 
   return (
@@ -197,27 +215,112 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
             </div>
           </div>
 
-          {/* Duration Slider */}
-          <div className="space-y-2 pt-2">
-            <div className="flex justify-between items-center">
-              <Label htmlFor="duration" className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                비디오 길이 (초)
-              </Label>
-              <span className="text-sm font-medium text-muted-foreground bg-primary/10 px-2 py-1 rounded-md">
-                {config.durationSeconds}초
-              </span>
+          {/* Video Generation Options */}
+          <div className="space-y-4 p-4 border rounded-lg bg-blue-50/50">
+            <div className="flex items-center gap-2 mb-2">
+              <Settings className="h-4 w-4 text-blue-600" />
+              <Label className="text-sm font-medium text-blue-800">비디오 생성 옵션</Label>
             </div>
-            <Slider
-              id="duration"
-              min={5}
-              max={8}
-              step={1}
-              value={[config.durationSeconds]}
-              onValueChange={updateDuration}
-              disabled={isLoading}
-              className="py-2"
-            />
+
+            {/* Duration Slider */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label htmlFor="duration" className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  비디오 길이 (초)
+                </Label>
+                <span className="text-sm font-medium text-muted-foreground bg-white px-2 py-1 rounded-md border">
+                  {config.durationSeconds}초
+                </span>
+              </div>
+              <Slider
+                id="duration"
+                min={config.videoGenerationModel === 'veo-3.0-generate-preview' ? 8 : 5}
+                max={8}
+                step={1}
+                value={[config.durationSeconds]}
+                onValueChange={updateDuration}
+                disabled={isLoading || config.videoGenerationModel === 'veo-3.0-generate-preview'}
+                className="py-2"
+              />
+              <p className="text-xs text-muted-foreground">
+                {config.videoGenerationModel === 'veo-3.0-generate-preview' 
+                  ? 'Veo 3.0은 8초 고정입니다.' 
+                  : 'Veo 2.0은 5-8초 설정 가능합니다. 길수록 더 많은 처리 시간이 필요합니다.'
+                }
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Enhance Prompt Toggle */}
+              <div className="flex items-center justify-between space-x-2">
+                <div className="flex items-center space-x-2">
+                  <Sparkles className="h-4 w-4 text-amber-600" />
+                  <Label htmlFor="enhance-prompt" className="text-sm font-medium">
+                    프롬프트 개선
+                  </Label>
+                </div>
+                <Switch
+                  id="enhance-prompt"
+                  checked={config.enhancePrompt}
+                  onCheckedChange={updateEnhancePrompt}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Generate Audio Toggle */}
+              <div className="flex items-center justify-between space-x-2">
+                <div className="flex items-center space-x-2">
+                  {config.generateAudio ? (
+                    <Volume2 className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <VolumeX className="h-4 w-4 text-gray-400" />
+                  )}
+                  <Label htmlFor="generate-audio" className="text-sm font-medium">
+                    오디오 생성
+                  </Label>
+                </div>
+                <Switch
+                  id="generate-audio"
+                  checked={config.generateAudio}
+                  onCheckedChange={updateGenerateAudio}
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+
+            {/* Negative Prompt */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="negative-prompt" className="flex items-center gap-2">
+                  <X className="h-4 w-4 text-red-600" />
+                  네거티브 프롬프트
+                </Label>
+                {config.negativePrompt && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => updateNegativePrompt('')}
+                    disabled={isLoading}
+                    className="h-6 px-2 text-xs"
+                  >
+                    지우기
+                  </Button>
+                )}
+              </div>
+              <Textarea
+                id="negative-prompt"
+                value={config.negativePrompt}
+                onChange={(e) => updateNegativePrompt(e.target.value)}
+                placeholder="원하지 않는 요소들을 입력하세요 (예: 흐릿한, 어두운, 왜곡된)"
+                className="min-h-[60px] resize-none"
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                비디오에 나타나지 않았으면 하는 요소들을 설명하세요. 이는 더 정확한 결과를 얻는 데 도움이 됩니다.
+              </p>
+            </div>
           </div>
 
           {/* Advanced Settings - Collapsible */}
@@ -318,6 +421,9 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
             <p><strong>번역 모델:</strong> {config.translationModel}</p>
             <p><strong>비디오 모델:</strong> {config.videoGenerationModel}</p>
             <p><strong>비디오 길이:</strong> {config.durationSeconds}초</p>
+            <p><strong>프롬프트 개선:</strong> {config.enhancePrompt ? '활성화' : '비활성화'}</p>
+            <p><strong>오디오 생성:</strong> {config.generateAudio ? '활성화' : '비활성화'}</p>
+            <p><strong>네거티브 프롬프트:</strong> {config.negativePrompt ? '설정됨' : '없음'}</p>
           </div>
         </div>
       </CardContent>

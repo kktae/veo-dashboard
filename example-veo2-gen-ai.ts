@@ -52,21 +52,40 @@ async function generateText(prompt: string) {
   return response.text;
 }
 
-async function generateVideo(prompt: string, outputGcsUri?: string) {
+async function generateVideo(
+  prompt: string, 
+  outputGcsUri?: string, 
+  model: string = 'veo-3.0-generate-preview',
+  enhancePrompt: boolean = true,
+  generateAudio: boolean = false,
+  negativePrompt: string = ''
+) {
   console.log("outputGcsUri:", outputGcsUri);
+  console.log("model:", model);
+  console.log("enhancePrompt:", enhancePrompt);
+  console.log("generateAudio:", generateAudio);
+  console.log("negativePrompt:", negativePrompt || "none");
   console.log('Generating video...');
+  
+  const videoConfig: any = {
+    aspectRatio: '16:9',
+    numberOfVideos: 1,
+    durationSeconds: 8,
+    enhancePrompt: enhancePrompt,
+    generateAudio: generateAudio,
+    outputGcsUri: outputGcsUri,
+    personGeneration: PersonGeneration.ALLOW_ALL,
+  };
+
+  // Add negative prompt only if provided
+  if (negativePrompt && negativePrompt.trim()) {
+    videoConfig.negativePrompt = negativePrompt.trim();
+  }
+
   let operation = await ai.models.generateVideos({
-    model: 'veo-2.0-generate-001',
+    model: model,
     prompt: prompt,
-    config: {
-      aspectRatio: '16:9',
-      numberOfVideos: 1,
-      durationSeconds: 8,
-      enhancePrompt: true,
-      generateAudio: false,
-      outputGcsUri: outputGcsUri,
-      personGeneration: PersonGeneration.ALLOW_ALL,
-    }
+    config: videoConfig
   });
 
   while (!operation.done) {
@@ -94,5 +113,17 @@ async function generateVideo(prompt: string, outputGcsUri?: string) {
 const text = await generateText('여우가 웃고 있습니다.');
 console.log("result:", text);
 
+// Examples of using different Veo models with various parameters
+// Using Veo 3.0 with default settings
 // const videos = await generateVideo('A man is walking down the street', process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI);
+
+// Using Veo 3.0 with audio generation
+// const videos = await generateVideo('A man is walking down the street', process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI, 'veo-3.0-generate-preview', true, true);
+
+// Using Veo 3.0 with negative prompt
+// const videos = await generateVideo('A beautiful forest', process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI, 'veo-3.0-generate-preview', true, false, 'dark, scary, horror');
+
+// Using Veo 2.0 with custom settings
+// const videos = await generateVideo('A man is walking down the street', process.env.GOOGLE_CLOUD_OUTPUT_GCS_URI, 'veo-2.0-generate-001', false, true, 'blurry, low quality');
+
 // console.log(videos);

@@ -119,7 +119,10 @@ export class VideoGenerationService {
     englishPrompt: string, 
     outputGcsUri?: string,
     model: string = 'veo-2.0-generate-001',
-    durationSeconds: number = 8
+    durationSeconds: number = 8,
+    enhancePrompt: boolean = true,
+    generateAudio: boolean = false,
+    negativePrompt: string = ''
   ) {
     const startTime = Date.now();
     
@@ -128,28 +131,41 @@ export class VideoGenerationService {
       model: model,
       promptLength: englishPrompt.length,
       promptPreview: englishPrompt.substring(0, 100) + "...",
-      outputGcsUri: outputGcsUri || "not configured"
+      outputGcsUri: outputGcsUri || "not configured",
+      enhancePrompt,
+      generateAudio,
+      hasNegativePrompt: !!negativePrompt
     });
     
     try {
       Logger.step("Video Generation Service - Calling Veo API", {
         prompt: englishPrompt.substring(0, 100) + "...",
-        model
+        model,
+        enhancePrompt,
+        generateAudio,
+        negativePrompt: negativePrompt ? negativePrompt.substring(0, 50) + "..." : "none"
       });
 
       const videos = await withRetry(async () => {
+        const videoConfig: any = {
+          aspectRatio: '16:9',
+          numberOfVideos: 1,
+          durationSeconds: durationSeconds,
+          enhancePrompt: enhancePrompt,
+          generateAudio: generateAudio,
+          outputGcsUri: outputGcsUri,
+          personGeneration: PersonGeneration.ALLOW_ALL,
+        };
+
+        // Add negative prompt only if provided
+        if (negativePrompt && negativePrompt.trim()) {
+          videoConfig.negativePrompt = negativePrompt.trim();
+        }
+
         let operation = await ai.models.generateVideos({
           model: model,
           prompt: englishPrompt,
-          config: {
-            aspectRatio: '16:9',
-            numberOfVideos: 1,
-            durationSeconds: durationSeconds,
-            enhancePrompt: true,
-            generateAudio: false,
-            outputGcsUri: outputGcsUri,
-            personGeneration: PersonGeneration.ALLOW_ALL,
-          }
+          config: videoConfig
         });
 
         Logger.step("Video Generation Service - Operation started, waiting for completion", {

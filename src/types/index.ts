@@ -86,6 +86,9 @@ export interface AIModelConfig {
   videoGenerationModel: string;
   translationPromptConfig: TranslationPromptConfig;
   durationSeconds: number;
+  enhancePrompt: boolean;
+  generateAudio: boolean;
+  negativePrompt: string;
 }
 
 // Default configurations
@@ -106,7 +109,12 @@ export const DEFAULT_VIDEO_GENERATION_MODELS: VideoGenerationModel[] = [
   {
     id: 'veo-2.0-generate-001',
     name: 'Veo 2.0',
-    description: '최신 비디오 생성 모델'
+    description: '기존 비디오 생성 모델'
+  },
+  {
+    id: 'veo-3.0-generate-preview',
+    name: 'Veo 3.0 (Preview)',
+    description: '최신 프리뷰 비디오 생성 모델'
   }
 ];
 
@@ -119,5 +127,8 @@ export const DEFAULT_AI_MODEL_CONFIG: AIModelConfig = {
   translationModel: 'gemini-2.0-flash-lite-001',
   videoGenerationModel: 'veo-2.0-generate-001',
   durationSeconds: 8,
-  translationPromptConfig: DEFAULT_TRANSLATION_PROMPT_CONFIG
+  translationPromptConfig: DEFAULT_TRANSLATION_PROMPT_CONFIG,
+  enhancePrompt: true,
+  generateAudio: false,
+  negativePrompt: ''
 }; 
