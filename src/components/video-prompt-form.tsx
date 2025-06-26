@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Switch } from '@/components/ui/switch';
-import { Send, Loader2, ChevronDown, ChevronRight, Settings, Clock, Lock, Volume2, VolumeX, Sparkles, X } from 'lucide-react';
+import { Send, Loader2, ChevronDown, ChevronRight, Settings, Clock, Lock, Volume2, VolumeX, Sparkles, X, Maximize } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { 
   DEFAULT_TRANSLATION_MODELS, 
@@ -66,12 +66,35 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
   };
 
   const updateVideoGenerationModel = (model: string) => {
-    setConfig(prev => ({
-      ...prev,
-      videoGenerationModel: model,
-      // Veo 3.0은 8초 고정이므로 자동으로 8초로 설정
-      durationSeconds: model === 'veo-3.0-generate-preview' ? 8 : prev.durationSeconds
-    }));
+    // 선택된 모델의 capabilities 찾기
+    const selectedModel = DEFAULT_VIDEO_GENERATION_MODELS.find(m => m.id === model);
+    const capabilities = selectedModel?.capabilities;
+    
+    setConfig(prev => {
+      let newConfig = {
+        ...prev,
+        videoGenerationModel: model
+      };
+
+      // Duration 설정 조정
+      if (capabilities?.durationRange.fixed) {
+        // 고정값이 있는 경우 (Veo 3.0)
+        newConfig.durationSeconds = capabilities.durationRange.fixed;
+      } else if (capabilities?.durationRange) {
+        // 현재 duration이 새로운 범위를 벗어나는 경우 조정
+        const { min, max } = capabilities.durationRange;
+        if (prev.durationSeconds < min || prev.durationSeconds > max) {
+          newConfig.durationSeconds = max; // 기본값을 최대값으로 설정
+        }
+      }
+
+      // 오디오 생성 기능 지원하지 않는 모델의 경우 비활성화
+      if (!capabilities?.supportsAudioGeneration && prev.generateAudio) {
+        newConfig.generateAudio = false;
+      }
+
+      return newConfig;
+    });
   };
 
   const updateDuration = (duration: number[]) => {
@@ -108,6 +131,10 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
 
   const updateNegativePrompt = (prompt: string) => {
     setConfig(prev => ({ ...prev, negativePrompt: prompt }));
+  };
+
+  const updateAspectRatio = (ratio: string) => {
+    setConfig(prev => ({ ...prev, aspectRatio: ratio }));
   };
 
   return (
@@ -150,16 +177,32 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
 
           {/* Main Prompt Input */}
           <div className="space-y-2">
-            <Label htmlFor="prompt">비디오 프롬프트</Label>
+            <Label htmlFor="prompt">프롬프트 (한국어)</Label>
             <Textarea
               id="prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="예: 여우가 숲에서 뛰어다니고 있습니다."
-              className="min-h-[120px] resize-none"
+              placeholder="생성하고 싶은 비디오에 대해 자세히 설명해주세요..."
+              className="min-h-[100px] resize-none"
               disabled={isLoading}
-              suppressHydrationWarning
             />
+            {(() => {
+              const selectedModel = DEFAULT_VIDEO_GENERATION_MODELS.find(m => m.id === config.videoGenerationModel);
+              return (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>• 상세한 설명일수록 더 정확한 결과를 얻을 수 있습니다.</p>
+                  {selectedModel?.capabilities.promptRewriter.enhancesPromptsUnder30Words && (
+                    <p>• 30단어 미만의 간단한 프롬프트는 AI가 자동으로 개선하여 응답에 포함됩니다.</p>
+                  )}
+                  {selectedModel?.capabilities.supportsAudioGeneration && (
+                    <p>• {selectedModel.name}에서는 오디오가 포함된 비디오를 생성할 수 있습니다.</p>
+                  )}
+                  {!selectedModel?.capabilities.promptRewriter.canDisable && (
+                    <p className="text-amber-600">• {selectedModel?.name}에서는 프롬프트 재작성기가 항상 활성화됩니다.</p>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Model Selection */}
@@ -233,60 +276,147 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
                   {config.durationSeconds}초
                 </span>
               </div>
-              <Slider
-                id="duration"
-                min={config.videoGenerationModel === 'veo-3.0-generate-preview' ? 8 : 5}
-                max={8}
-                step={1}
-                value={[config.durationSeconds]}
-                onValueChange={updateDuration}
-                disabled={isLoading || config.videoGenerationModel === 'veo-3.0-generate-preview'}
-                className="py-2"
-              />
-              <p className="text-xs text-muted-foreground">
-                {config.videoGenerationModel === 'veo-3.0-generate-preview' 
-                  ? 'Veo 3.0은 8초 고정입니다.' 
-                  : 'Veo 2.0은 5-8초 설정 가능합니다. 길수록 더 많은 처리 시간이 필요합니다.'
-                }
-              </p>
+              {(() => {
+                const selectedModel = DEFAULT_VIDEO_GENERATION_MODELS.find(m => m.id === config.videoGenerationModel);
+                const capabilities = selectedModel?.capabilities;
+                const isFixed = capabilities?.durationRange.fixed !== undefined;
+                const min = capabilities?.durationRange.min || 5;
+                const max = capabilities?.durationRange.max || 8;
+                
+                return (
+                  <>
+                    <Slider
+                      id="duration"
+                      min={min}
+                      max={max}
+                      step={1}
+                      value={[config.durationSeconds]}
+                      onValueChange={updateDuration}
+                      disabled={isLoading || isFixed}
+                      className="py-2"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {isFixed 
+                        ? `${selectedModel?.name}은 ${capabilities?.durationRange.fixed}초 고정입니다.`
+                        : `${selectedModel?.name}은 ${min}-${max}초 설정 가능합니다. 길수록 더 많은 처리 시간이 필요합니다.`
+                      }
+                    </p>
+                  </>
+                );
+              })()}
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Enhance Prompt Toggle */}
-              <div className="flex items-center justify-between space-x-2">
-                <div className="flex items-center space-x-2">
-                  <Sparkles className="h-4 w-4 text-amber-600" />
-                  <Label htmlFor="enhance-prompt" className="text-sm font-medium">
-                    프롬프트 개선
-                  </Label>
-                </div>
-                <Switch
-                  id="enhance-prompt"
-                  checked={config.enhancePrompt}
-                  onCheckedChange={updateEnhancePrompt}
-                  disabled={isLoading}
-                />
-              </div>
+              {(() => {
+                const selectedModel = DEFAULT_VIDEO_GENERATION_MODELS.find(m => m.id === config.videoGenerationModel);
+                const promptRewriterSupported = selectedModel?.capabilities.promptRewriter.supported;
+                const canDisablePromptRewriter = selectedModel?.capabilities.promptRewriter.canDisable;
+                
+                if (!promptRewriterSupported) return null;
+                
+                return (
+                  <div className="flex items-center justify-between space-x-2">
+                    <div className="flex items-center space-x-2">
+                      {config.enhancePrompt ? (
+                        <Sparkles className="h-4 w-4 text-blue-600" />
+                      ) : (
+                        <Sparkles className="h-4 w-4 text-gray-400" />
+                      )}
+                      <div className="flex flex-col">
+                        <Label htmlFor="enhance-prompt" className="text-sm font-medium">
+                          프롬프트 개선 {!canDisablePromptRewriter && '(필수)'}
+                        </Label>
+                        {!canDisablePromptRewriter && (
+                          <span className="text-xs text-amber-600">
+                            {selectedModel?.name}에서는 프롬프트 재작성기를 비활성화할 수 없습니다
+                          </span>
+                        )}
+                        {selectedModel?.capabilities.promptRewriter.enhancesPromptsUnder30Words && (
+                          <span className="text-xs text-gray-500">
+                            30단어 미만 프롬프트에서 재작성된 프롬프트가 응답에 포함됩니다
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Switch
+                      id="enhance-prompt"
+                      checked={config.enhancePrompt}
+                      onCheckedChange={updateEnhancePrompt}
+                      disabled={isLoading || !canDisablePromptRewriter}
+                    />
+                  </div>
+                );
+              })()}
+
+              {/* Aspect Ratio Selector */}
+              {(() => {
+                const selectedModel = DEFAULT_VIDEO_GENERATION_MODELS.find(m => m.id === config.videoGenerationModel);
+                const supportedRatios = selectedModel?.capabilities.aspectRatios || ['16:9'];
+                
+                return (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Maximize className="h-4 w-4" />
+                      화면비
+                    </Label>
+                    <Select
+                      value={config.aspectRatio}
+                      onValueChange={updateAspectRatio}
+                      disabled={isLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {supportedRatios.map((ratio) => (
+                          <SelectItem key={ratio} value={ratio}>
+                            {ratio === '16:9' ? '16:9 (가로형)' : '9:16 (세로형)'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!supportedRatios.includes('9:16') && (
+                      <p className="text-xs text-amber-600">
+                        {selectedModel?.name}에서는 9:16 세로형 화면비를 지원하지 않습니다
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Generate Audio Toggle */}
-              <div className="flex items-center justify-between space-x-2">
-                <div className="flex items-center space-x-2">
-                  {config.generateAudio ? (
-                    <Volume2 className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <VolumeX className="h-4 w-4 text-gray-400" />
-                  )}
-                  <Label htmlFor="generate-audio" className="text-sm font-medium">
-                    오디오 생성
-                  </Label>
-                </div>
-                <Switch
-                  id="generate-audio"
-                  checked={config.generateAudio}
-                  onCheckedChange={updateGenerateAudio}
-                  disabled={isLoading}
-                />
-              </div>
+              {(() => {
+                const selectedModel = DEFAULT_VIDEO_GENERATION_MODELS.find(m => m.id === config.videoGenerationModel);
+                const capabilities = selectedModel?.capabilities;
+                const supportsAudio = capabilities?.supportsAudioGeneration || false;
+                
+                return (
+                  <div className="flex items-center justify-between space-x-2">
+                    <div className="flex items-center space-x-2">
+                      {config.generateAudio && supportsAudio ? (
+                        <Volume2 className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <VolumeX className="h-4 w-4 text-gray-400" />
+                      )}
+                      <Label htmlFor="generate-audio" className="text-sm font-medium">
+                        오디오 생성
+                        {!supportsAudio && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({selectedModel?.name} 미지원)
+                          </span>
+                        )}
+                      </Label>
+                    </div>
+                    <Switch
+                      id="generate-audio"
+                      checked={config.generateAudio && supportsAudio}
+                      onCheckedChange={updateGenerateAudio}
+                      disabled={isLoading || !supportsAudio}
+                    />
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Negative Prompt */}
@@ -418,13 +548,77 @@ export function VideoPromptForm({ onSubmit, isLoading }: VideoPromptFormProps) {
         <div className="pt-4 border-t">
           <p className="text-sm text-muted-foreground mb-2">현재 설정:</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-            <p><strong>번역 모델:</strong> {config.translationModel}</p>
-            <p><strong>비디오 모델:</strong> {config.videoGenerationModel}</p>
-            <p><strong>비디오 길이:</strong> {config.durationSeconds}초</p>
-            <p><strong>프롬프트 개선:</strong> {config.enhancePrompt ? '활성화' : '비활성화'}</p>
-            <p><strong>오디오 생성:</strong> {config.generateAudio ? '활성화' : '비활성화'}</p>
-            <p><strong>네거티브 프롬프트:</strong> {config.negativePrompt ? '설정됨' : '없음'}</p>
+            {(() => {
+              const selectedModel = DEFAULT_VIDEO_GENERATION_MODELS.find(m => m.id === config.videoGenerationModel);
+              const capabilities = selectedModel?.capabilities;
+              
+              return (
+                <>
+                  <p><strong>번역 모델:</strong> {config.translationModel}</p>
+                  <p><strong>비디오 모델:</strong> {selectedModel?.name || config.videoGenerationModel}</p>
+                  <p>
+                    <strong>비디오 길이:</strong> {config.durationSeconds}초
+                    {capabilities?.durationRange.fixed && (
+                      <span className="text-blue-600 ml-1">(고정)</span>
+                    )}
+                  </p>
+                  <p>
+                    <strong>프롬프트 개선:</strong> 
+                    {capabilities?.promptRewriter.supported ? (
+                      config.enhancePrompt ? (
+                        <span className="text-green-600">활성화</span>
+                      ) : (
+                        <span className="text-gray-600">비활성화</span>
+                      )
+                    ) : (
+                      <span className="text-gray-400">미지원</span>
+                    )}
+                    {capabilities?.promptRewriter.canDisable === false && (
+                      <span className="text-amber-600 ml-1">(필수)</span>
+                    )}
+                  </p>
+                  <p>
+                    <strong>오디오 생성:</strong> 
+                    {capabilities?.supportsAudioGeneration ? (
+                      config.generateAudio ? (
+                        <span className="text-green-600">활성화</span>
+                      ) : (
+                        <span className="text-gray-600">비활성화</span>
+                      )
+                    ) : (
+                      <span className="text-gray-400">미지원</span>
+                    )}
+                  </p>
+                  <p><strong>화면비:</strong> {config.aspectRatio}</p>
+                  <p><strong>네거티브 프롬프트:</strong> {config.negativePrompt ? '설정됨' : '없음'}</p>
+                </>
+              );
+            })()}
           </div>
+          
+          {/* Model Capabilities Info */}
+          {(() => {
+            const selectedModel = DEFAULT_VIDEO_GENERATION_MODELS.find(m => m.id === config.videoGenerationModel);
+            if (!selectedModel) return null;
+            
+            return (
+              <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                <p className="text-xs font-medium text-blue-800 mb-2">{selectedModel.name} 모델 특징:</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-blue-700">
+                  <p>• 비디오 길이: {selectedModel.capabilities.durationRange.fixed ? 
+                    `${selectedModel.capabilities.durationRange.fixed}초 고정` : 
+                    `${selectedModel.capabilities.durationRange.min}-${selectedModel.capabilities.durationRange.max}초`}</p>
+                  <p>• 오디오 생성: {selectedModel.capabilities.supportsAudioGeneration ? '지원' : '미지원'}</p>
+                  <p>• 비디오 확장: {selectedModel.capabilities.supportsVideoExtension ? '지원' : '미지원'}</p>
+                  <p>• 화면비: {selectedModel.capabilities.aspectRatios.join(', ')}</p>
+                  <p>• 프롬프트 재작성기: {selectedModel.capabilities.promptRewriter.canDisable ? '선택적' : '필수'}</p>
+                  {selectedModel.capabilities.promptRewriter.enhancesPromptsUnder30Words && (
+                    <p className="md:col-span-2">• 30단어 미만 프롬프트 자동 개선 및 응답 포함</p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </CardContent>
     </Card>

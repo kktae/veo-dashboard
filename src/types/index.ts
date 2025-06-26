@@ -74,6 +74,23 @@ export interface VideoGenerationModel {
   id: string;
   name: string;
   description?: string;
+  capabilities: {
+    durationRange: {
+      min: number;
+      max: number;
+      fixed?: number;
+    };
+    supportsAudioGeneration: boolean;
+    supportsVideoExtension: boolean;
+    supportsLastFrame: boolean;
+    promptRewriter: {
+      supported: boolean;
+      canDisable: boolean;
+      enhancesPromptsUnder30Words: boolean;
+    };
+    aspectRatios: string[];
+    videoFormats: string[];
+  };
 }
 
 export interface TranslationPromptConfig {
@@ -89,6 +106,7 @@ export interface AIModelConfig {
   enhancePrompt: boolean;
   generateAudio: boolean;
   negativePrompt: string;
+  aspectRatio: string;
 }
 
 // Default configurations
@@ -109,12 +127,38 @@ export const DEFAULT_VIDEO_GENERATION_MODELS: VideoGenerationModel[] = [
   {
     id: 'veo-2.0-generate-001',
     name: 'Veo 2.0',
-    description: '기존 비디오 생성 모델'
+    description: '기존 비디오 생성 모델 (GA)',
+    capabilities: {
+      durationRange: { min: 5, max: 8 },
+      supportsAudioGeneration: false,
+      supportsVideoExtension: true,
+      supportsLastFrame: true,
+      promptRewriter: {
+        supported: true,
+        canDisable: true,
+        enhancesPromptsUnder30Words: true
+      },
+      aspectRatios: ['16:9', '9:16'],
+      videoFormats: ['video/mp4']
+    }
   },
   {
     id: 'veo-3.0-generate-preview',
     name: 'Veo 3.0 (Preview)',
-    description: '최신 프리뷰 비디오 생성 모델'
+    description: '최신 프리뷰 비디오 생성 모델',
+    capabilities: {
+      durationRange: { min: 8, max: 8, fixed: 8 },
+      supportsAudioGeneration: true,
+      supportsVideoExtension: false,
+      supportsLastFrame: false,
+      promptRewriter: {
+        supported: true,
+        canDisable: false,
+        enhancesPromptsUnder30Words: true
+      },
+      aspectRatios: ['16:9'],
+      videoFormats: ['video/mp4']
+    }
   }
 ];
 
@@ -130,5 +174,6 @@ export const DEFAULT_AI_MODEL_CONFIG: AIModelConfig = {
   translationPromptConfig: DEFAULT_TRANSLATION_PROMPT_CONFIG,
   enhancePrompt: true,
   generateAudio: false,
-  negativePrompt: ''
+  negativePrompt: '',
+  aspectRatio: '16:9'
 }; 

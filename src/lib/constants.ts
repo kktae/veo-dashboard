@@ -51,10 +51,20 @@ export const STATUS_INFO = {
 
 // API Configuration
 export const API_CONFIG = {
-  POLLING_INTERVAL: 2000, // Reduced from 3000 to 2000ms for better responsiveness
+  POLLING_INTERVAL: 3000, // 3 seconds base interval (Google Cloud recommends 2-5 seconds)
   MAX_RETRIES: 3,
   RETRY_BASE_DELAY: 5000,
-  REQUEST_TIMEOUT: 10000
+  REQUEST_TIMEOUT: 10000,
+  // Video generation specific settings
+  VIDEO_GENERATION: {
+    MAX_POLLING_TIME: 15 * 60 * 1000, // 15 minutes maximum
+    MIN_POLLING_INTERVAL: 2000, // Minimum 2 seconds between polls
+    MAX_POLLING_INTERVAL: 30000, // Maximum 30 seconds between polls
+    EXPONENTIAL_BACKOFF_FACTOR: 1.5, // Gradual increase in polling interval
+    JITTER_MAX: 1000, // Add up to 1 second of random jitter
+    MAX_CONSECUTIVE_ERRORS: 3, // Maximum consecutive errors before failing
+    RATE_LIMIT_BACKOFF_MAX: 60000 // Maximum 1 minute backoff for rate limits
+  }
 } as const;
 
 // UI Constants

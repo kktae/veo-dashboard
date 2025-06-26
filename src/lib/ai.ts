@@ -115,6 +115,82 @@ export class TranslationService {
 }
 
 export class VideoGenerationService {
+  // 모델별 capabilities 정의 (프론트엔드와 동일)
+  private static readonly MODEL_CAPABILITIES = {
+    'veo-2.0-generate-001': {
+      durationRange: { min: 5, max: 8 },
+      supportsAudioGeneration: false,
+      supportsVideoExtension: true,
+      supportsLastFrame: true,
+      promptRewriter: {
+        supported: true,
+        canDisable: true,
+        enhancesPromptsUnder30Words: true
+      },
+      aspectRatios: ['16:9', '9:16'],
+      videoFormats: ['video/mp4']
+    },
+    'veo-3.0-generate-preview': {
+      durationRange: { min: 8, max: 8, fixed: 8 },
+      supportsAudioGeneration: true,
+      supportsVideoExtension: false,
+      supportsLastFrame: false,
+      promptRewriter: {
+        supported: true,
+        canDisable: false,
+        enhancesPromptsUnder30Words: true
+      },
+      aspectRatios: ['16:9'],
+      videoFormats: ['video/mp4']
+    }
+  };
+
+  // 모델별 파라미터 검증
+  private static validateModelParameters(
+    model: string,
+    durationSeconds: number,
+    generateAudio: boolean,
+    enhancePrompt: boolean,
+    aspectRatio: string
+  ): { isValid: boolean; errors: string[] } {
+    const capabilities = this.MODEL_CAPABILITIES[model as keyof typeof this.MODEL_CAPABILITIES];
+    const errors: string[] = [];
+
+    if (!capabilities) {
+      errors.push(`Unsupported model: ${model}`);
+      return { isValid: false, errors };
+    }
+
+    // Duration validation
+    if ('fixed' in capabilities.durationRange) {
+      if (durationSeconds !== capabilities.durationRange.fixed) {
+        errors.push(`${model} requires fixed duration of ${capabilities.durationRange.fixed} seconds`);
+      }
+    } else {
+      const { min, max } = capabilities.durationRange;
+      if (durationSeconds < min || durationSeconds > max) {
+        errors.push(`${model} duration must be between ${min}-${max} seconds`);
+      }
+    }
+
+    // Audio generation validation
+    if (generateAudio && !capabilities.supportsAudioGeneration) {
+      errors.push(`${model} does not support audio generation`);
+    }
+
+    // Prompt rewriter validation
+    if (!enhancePrompt && !capabilities.promptRewriter.canDisable) {
+      errors.push(`${model} requires prompt rewriter to be enabled`);
+    }
+
+    // Aspect ratio validation
+    if (!capabilities.aspectRatios.includes(aspectRatio)) {
+      errors.push(`${model} does not support aspect ratio ${aspectRatio}. Supported ratios: ${capabilities.aspectRatios.join(', ')}`);
+    }
+
+    return { isValid: errors.length === 0, errors };
+  }
+
   static async generateVideo(
     englishPrompt: string, 
     outputGcsUri?: string,
@@ -126,12 +202,27 @@ export class VideoGenerationService {
   ) {
     const startTime = Date.now();
     
+    // 모델별 파라미터 검증
+    const validation = this.validateModelParameters(model, durationSeconds, generateAudio, enhancePrompt, '16:9');
+    if (!validation.isValid) {
+      const errorMessage = `Invalid parameters for ${model}: ${validation.errors.join(', ')}`;
+      Logger.error("Video Generation Service - Parameter validation failed", {
+        model,
+        durationSeconds,
+        generateAudio,
+        enhancePrompt,
+        errors: validation.errors
+      });
+      throw new Error(errorMessage);
+    }
+    
     Logger.step("Video Generation Service - Starting video generation", {
       service: "Veo",
       model: model,
       promptLength: englishPrompt.length,
       promptPreview: englishPrompt.substring(0, 100) + "...",
       outputGcsUri: outputGcsUri || "not configured",
+      durationSeconds,
       enhancePrompt,
       generateAudio,
       hasNegativePrompt: !!negativePrompt
@@ -141,52 +232,60 @@ export class VideoGenerationService {
       Logger.step("Video Generation Service - Calling Veo API", {
         prompt: englishPrompt.substring(0, 100) + "...",
         model,
+        durationSeconds,
         enhancePrompt,
         generateAudio,
         negativePrompt: negativePrompt ? negativePrompt.substring(0, 50) + "..." : "none"
       });
 
       const videos = await withRetry(async () => {
-        const videoConfig: any = {
-          aspectRatio: '16:9',
-          numberOfVideos: 1,
-          durationSeconds: durationSeconds,
-          enhancePrompt: enhancePrompt,
-          generateAudio: generateAudio,
-          outputGcsUri: outputGcsUri,
-          personGeneration: PersonGeneration.ALLOW_ALL,
-        };
+                            // API 파라미터 구성 - 모델별 지원 여부에 따라 동적 구성
+          const capabilities = VideoGenerationService.MODEL_CAPABILITIES[model as keyof typeof VideoGenerationService.MODEL_CAPABILITIES];
+          const videoConfig: any = {
+            aspectRatio: '16:9',
+            numberOfVideos: 1,
+            durationSeconds: durationSeconds,
+            outputGcsUri: outputGcsUri,
+            personGeneration: PersonGeneration.ALLOW_ALL,
+          };
 
-        // Add negative prompt only if provided
-        if (negativePrompt && negativePrompt.trim()) {
-          videoConfig.negativePrompt = negativePrompt.trim();
+          // 프롬프트 재작성기 설정 (모델이 지원하는 경우만)
+          if (capabilities?.promptRewriter.supported) {
+            videoConfig.enhancePrompt = enhancePrompt;
+          }
+
+          // 오디오 생성 설정 (모델이 지원하는 경우만)
+          if (capabilities?.supportsAudioGeneration) {
+            videoConfig.generateAudio = generateAudio;
+          }
+
+          // Add negative prompt only if provided
+          if (negativePrompt && negativePrompt.trim()) {
+            videoConfig.negativePrompt = negativePrompt.trim();
+          }
+
+          // Start the long-running operation
+          let operation = await ai.models.generateVideos({
+            model: model,
+            prompt: englishPrompt,
+            config: videoConfig
+          });
+
+        const operationName = operation.name;
+        if (!operationName) {
+          throw new Error('No operation name returned from video generation request');
         }
 
-        let operation = await ai.models.generateVideos({
-          model: model,
-          prompt: englishPrompt,
-          config: videoConfig
-        });
-
-        Logger.step("Video Generation Service - Operation started, waiting for completion", {
-          operationId: operation.name || 'unknown',
+        Logger.step("Video Generation Service - Long-running operation started", {
+          operationName: operationName,
+          operationId: operationName.split('/').pop() || 'unknown',
           status: operation.done ? 'completed' : 'in-progress'
         });
 
-        let checkCount = 0;
-        while (!operation.done) {
-          checkCount++;
-          Logger.debug("Video Generation Service - Checking operation status", {
-            checkCount,
-            operationId: operation.name || 'unknown'
-          });
-          
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          operation = await ai.operations.getVideosOperation({ operation: operation });
-        }
-
-        const videos = operation.response?.generatedVideos;
-        if (videos === undefined || videos.length === 0) {
+        // Poll the operation status with improved logic
+        const videos = await this.pollVideoGenerationOperation(operation);
+        
+        if (!videos || videos.length === 0) {
           throw new Error('No videos generated');
         }
 
@@ -212,6 +311,148 @@ export class VideoGenerationService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Poll video generation operation status with improved error handling
+   * Following the best practices from Google Cloud documentation
+   */
+  private static async pollVideoGenerationOperation(operation: any): Promise<any[]> {
+    const startTime = Date.now();
+    let checkCount = 0;
+    const config = API_CONFIG.VIDEO_GENERATION;
+    const basePollingInterval = Math.max(API_CONFIG.POLLING_INTERVAL, config.MIN_POLLING_INTERVAL);
+    const operationName = operation.name;
+
+    Logger.step("Video Generation Service - Starting operation polling", {
+      operationName,
+      basePollingInterval: `${basePollingInterval}ms`,
+      maxPollingTime: `${config.MAX_POLLING_TIME}ms`,
+      initialStatus: operation.done ? 'completed' : 'in-progress'
+    });
+
+    // If already done, return immediately
+    if (operation.done) {
+      const videos = operation.response?.generatedVideos;
+      if (!videos || videos.length === 0) {
+        throw new Error('No videos found in completed operation response');
+      }
+      return videos;
+    }
+
+    let currentOperation = operation;
+    let consecutiveErrors = 0;
+
+    while (Date.now() - startTime < config.MAX_POLLING_TIME) {
+      checkCount++;
+      
+      // Calculate exponential backoff with jitter for polling interval
+      const exponentialBackoff = Math.min(basePollingInterval * Math.pow(config.EXPONENTIAL_BACKOFF_FACTOR, Math.floor(checkCount / 5)), config.MAX_POLLING_INTERVAL);
+      const jitter = Math.random() * config.JITTER_MAX; // Add random jitter
+      const pollingInterval = exponentialBackoff + jitter;
+      
+      try {
+        Logger.debug("Video Generation Service - Polling operation status", {
+          checkCount,
+          operationName,
+          elapsedTime: `${Date.now() - startTime}ms`,
+          nextPollIn: `${Math.round(pollingInterval)}ms`,
+          consecutiveErrors
+        });
+
+        // Wait before polling (except for first check)
+        if (checkCount > 1) {
+          await new Promise(resolve => setTimeout(resolve, pollingInterval));
+        }
+
+        // Poll operation status
+        currentOperation = await ai.operations.getVideosOperation({ operation: currentOperation });
+
+        // Reset consecutive errors on successful poll
+        consecutiveErrors = 0;
+
+        // Check if operation is completed
+        if (currentOperation.done) {
+          Logger.step("Video Generation Service - Operation completed", {
+            checkCount,
+            totalTime: `${Date.now() - startTime}ms`,
+            operationName
+          });
+
+          // Extract videos from the response
+          const videos = currentOperation.response?.generatedVideos;
+          if (!videos || videos.length === 0) {
+            throw new Error('No videos found in completed operation response');
+          }
+
+          Logger.step("Video Generation Service - Videos extracted from operation", {
+            videoCount: videos.length,
+            hasFirstVideo: !!videos[0]
+          });
+
+          return videos;
+        }
+
+                 // Operation is still running
+         Logger.debug("Video Generation Service - Operation still in progress", {
+           checkCount,
+           operationName,
+           timeRemaining: `${config.MAX_POLLING_TIME - (Date.now() - startTime)}ms`
+         });
+
+      } catch (error) {
+        consecutiveErrors++;
+        
+                 // Handle rate limiting (429 errors) with longer backoff
+         if (error instanceof Error && (error.message.includes('429') || error.message.includes('rate limit'))) {
+           const rateLimitDelay = Math.min(config.RATE_LIMIT_BACKOFF_MAX, basePollingInterval * Math.pow(2, consecutiveErrors));
+           Logger.warn("Video Generation Service - Rate limit encountered, backing off", {
+             checkCount,
+             consecutiveErrors,
+             error: error.message,
+             backoffDelay: `${rateLimitDelay}ms`
+           });
+           
+           await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
+           consecutiveErrors = Math.max(0, consecutiveErrors - 1); // Reduce error count after rate limit handling
+           continue;
+         }
+
+         // Handle transient errors with retry
+         if (consecutiveErrors <= config.MAX_CONSECUTIVE_ERRORS) {
+           const retryDelay = basePollingInterval * Math.pow(2, consecutiveErrors);
+           Logger.warn("Video Generation Service - Polling error, retrying", {
+             checkCount,
+             consecutiveErrors,
+             maxConsecutiveErrors: config.MAX_CONSECUTIVE_ERRORS,
+             error: error instanceof Error ? error.message : error,
+             retryDelay: `${retryDelay}ms`
+           });
+           
+           await new Promise(resolve => setTimeout(resolve, retryDelay));
+           continue;
+         }
+        
+        // For persistent errors, throw
+        Logger.error("Video Generation Service - Polling failed with persistent error", {
+          checkCount,
+          consecutiveErrors,
+          error: error instanceof Error ? error.message : error,
+          operationName
+        });
+        throw error;
+      }
+    }
+
+    // Timeout reached
+    const timeoutError = new Error(`Video generation operation timed out after ${config.MAX_POLLING_TIME}ms`);
+    Logger.error("Video Generation Service - Operation polling timeout", {
+      checkCount,
+      timeoutMs: config.MAX_POLLING_TIME,
+      operationName,
+      consecutiveErrors
+    });
+    throw timeoutError;
   }
   
   static async downloadVideo(video: any, downloadPath: string) {
