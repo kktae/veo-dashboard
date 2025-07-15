@@ -48,6 +48,7 @@ next-env.d.ts
 /public/thumbnails/
 
 .cursor
+.claude
 veo-meta**
 
 credentials/

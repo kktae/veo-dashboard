@@ -11,7 +11,7 @@ const VIDEOS_PER_PAGE = 10;
 
 // Custom hook for managing video API requests
 const useVideoApi = () => {
-  const fetchVideos = useCallback(async (page: number = 0): Promise<{ videos: VideoGenerationResult[], hasMore: boolean }> => {
+  const fetchVideos = useCallback(async (page: number = 0): Promise<{ videos: VideoGenerationResult[], hasMore: boolean, totalCount: number }> => {
     const limit = VIDEOS_PER_PAGE;
     const offset = page * limit;
     
@@ -22,9 +22,10 @@ const useVideoApi = () => {
     
     const data = await response.json();
     const videos = (data.videos || []).map((video: any) => convertDatabaseRecordToResult(video));
-    const hasMore = videos.length === limit;
+    const hasMore = data.hasMore || false;
+    const totalCount = data.totalCount || 0;
     
-    return { videos, hasMore };
+    return { videos, hasMore, totalCount };
   }, []);
 
   const createVideo = useCallback(async (videoData: {
@@ -184,7 +185,8 @@ export function useVideoGeneration() {
     selectedIds: [],
   });
   
-  const [page, setPage] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1); // 1-based page for UI
+  const [totalCount, setTotalCount] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isAppending, setIsAppending] = useState(false);
@@ -222,31 +224,38 @@ export function useVideoGeneration() {
   // Use polling hook
   useVideoPolling(state.results, handleVideoUpdate, shouldPoll);
 
-  const loadVideos = useCallback(async (currentPage: number) => {
+  const loadVideos = useCallback(async (pageNumber: number) => {
     try {
-      if (currentPage === 0) {
+      if (pageNumber === 1) {
         setIsInitialLoading(true);
       } else {
         setIsAppending(true);
       }
-      Logger.info('Client - Loading videos from database', { page: currentPage });
+      Logger.info('Client - Loading videos from database', { page: pageNumber });
       
-      const { videos, hasMore: newHasMore } = await fetchVideos(currentPage);
+      // Convert 1-based page to 0-based for API
+      const { videos, hasMore: newHasMore, totalCount: newTotalCount } = await fetchVideos(pageNumber - 1);
       
       setState(prev => ({
         ...prev,
-        results: currentPage === 0 ? videos : [...prev.results, ...videos]
+        results: videos // Always replace results for pagination
       }));
       setHasMore(newHasMore);
+      setTotalCount(newTotalCount);
       
-      Logger.info('Client - Videos loaded', { count: videos.length, page: currentPage, hasMore: newHasMore });
+      Logger.info('Client - Videos loaded', { 
+        count: videos.length, 
+        page: pageNumber, 
+        hasMore: newHasMore,
+        totalCount: newTotalCount
+      });
     } catch (error) {
       Logger.error('Client - Failed to load videos from database', {
         error: error instanceof Error ? error.message : error
       });
       setState(prev => ({ ...prev, error: '비디오 로딩에 실패했습니다.' }));
     } finally {
-      if (currentPage === 0) {
+      if (pageNumber === 1) {
         setIsInitialLoading(false);
       } else {
         setIsAppending(false);
@@ -256,7 +265,7 @@ export function useVideoGeneration() {
 
   // Load initial videos on mount and request notification permission
   useEffect(() => {
-    loadVideos(0);
+    loadVideos(1);
     
     // Request notification permission for video completion alerts
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -268,12 +277,13 @@ export function useVideoGeneration() {
     }
   }, [loadVideos]);
 
-  const loadMoreVideos = useCallback(() => {
-    if (!hasMore || state.isLoading || isAppending) return;
-    const nextPage = page + 1;
-    setPage(nextPage);
-    loadVideos(nextPage);
-  }, [page, hasMore, state.isLoading, isAppending, loadVideos]);
+  const changePage = useCallback((newPage: number) => {
+    if (state.isLoading || isAppending) return;
+    setCurrentPage(newPage);
+    loadVideos(newPage);
+  }, [state.isLoading, isAppending, loadVideos]);
+
+  const totalPages = Math.ceil(totalCount / VIDEOS_PER_PAGE);
 
   const generateVideo = useCallback(async (koreanPrompt: string, config: AIModelConfig, userEmail: string) => {
     const startTime = Date.now();
@@ -316,13 +326,18 @@ export function useVideoGeneration() {
       createdAt: new Date(),
     };
 
-    // Add to state immediately for UI feedback
+    // Add to state immediately for UI feedback and go to first page
     setState(prev => ({
       ...prev,
-      results: [newResult, ...prev.results],
+      results: [newResult, ...prev.results.slice(0, VIDEOS_PER_PAGE - 1)], // Keep page size consistent
       isLoading: true,
       error: null,
     }));
+    
+    // If not on first page, move to first page
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
 
     try {
       // 2. Create initial DB record (관리자 체크 통과 후)
@@ -443,7 +458,10 @@ export function useVideoGeneration() {
     selectedIds: state.selectedIds,
     isInitialLoading,
     hasMore,
-    loadMoreVideos,
+    totalCount,
+    currentPage,
+    totalPages,
+    changePage,
     generateVideo,
     clearResults,
     deleteSelectedVideos,

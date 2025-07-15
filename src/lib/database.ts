@@ -292,6 +292,51 @@ class VideoDatabase {
     }
   }
 
+  // Get all video records with pagination and total count
+  async getVideosWithCount(limit: number = 50, offset: number = 0): Promise<{
+    videos: VideoRecord[];
+    totalCount: number;
+    hasMore: boolean;
+  }> {
+    const selectSQL = `
+      SELECT * FROM videos 
+      ORDER BY created_at DESC 
+      LIMIT $1 OFFSET $2
+    `;
+    
+    const countSQL = `SELECT COUNT(*) as total FROM videos`;
+    
+    try {
+      const [videosResult, countResult] = await Promise.all([
+        this.pool.query(selectSQL, [limit, offset]),
+        this.pool.query(countSQL)
+      ]);
+      
+      const records = videosResult.rows as VideoRecord[];
+      const totalCount = parseInt(countResult.rows[0].total);
+      const hasMore = offset + records.length < totalCount;
+      
+      Logger.debug('Database - Video records with count retrieved', { 
+        count: records.length, 
+        totalCount,
+        limit, 
+        offset,
+        hasMore
+      });
+      
+      return {
+        videos: records,
+        totalCount,
+        hasMore
+      };
+    } catch (error) {
+      Logger.error('Database - Failed to get video records with count', { 
+        error: error instanceof Error ? error.message : error 
+      });
+      throw error;
+    }
+  }
+
   // Get videos by their IDs
   async getVideosByIds(ids: string[]): Promise<VideoRecord[]> {
     if (ids.length === 0) {
@@ -615,6 +660,15 @@ export async function insertVideoRecord(video: Omit<VideoRecord, 'created_at'> &
 export async function getVideoRecords(limit?: number, offset?: number): Promise<VideoRecord[]> {
   const db = await getDatabase();
   return db.getVideos(limit, offset);
+}
+
+export async function getVideoRecordsWithCount(limit?: number, offset?: number): Promise<{
+  videos: VideoRecord[];
+  totalCount: number;
+  hasMore: boolean;
+}> {
+  const db = await getDatabase();
+  return db.getVideosWithCount(limit, offset);
 }
 
 export async function deleteVideoRecord(id: string): Promise<boolean> {

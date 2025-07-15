@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from '@/components/ui/pagination';
 import { Trash2, Video, Check, X, Loader2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
@@ -21,14 +22,17 @@ export function VideoDashboard() {
     error, 
     selectedIds,
     isInitialLoading,
+    totalCount,
+    currentPage,
+    totalPages,
+    hasMore,
+    changePage,
     generateVideo, 
     clearResults,
     toggleVideoSelection,
     selectAllVideos,
     deselectAllVideos,
-    deleteSelectedVideos,
-    hasMore,
-    loadMoreVideos
+    deleteSelectedVideos
   } = useVideoGeneration();
   const [isMounted, setIsMounted] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -53,6 +57,7 @@ export function VideoDashboard() {
     }
   }, [selectedIds.length, results.length]);
 
+
   const handleDeleteSelected = async () => {
     if (!deleteKey) {
       toast.error('삭제 키를 입력해주세요.');
@@ -65,6 +70,8 @@ export function VideoDashboard() {
       toast.success('선택한 비디오를 성공적으로 삭제했습니다.', { id: toastId });
       setIsDeleteDialogOpen(false);
       setDeleteKey('');
+      // Refresh current page data
+      changePage(currentPage);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
       toast.error('삭제에 실패했습니다.', {
@@ -89,6 +96,8 @@ export function VideoDashboard() {
       toast.success('모든 비디오를 성공적으로 삭제했습니다.', { id: toastId });
       setIsClearAllDialogOpen(false);
       setDeleteKey('');
+      // Go back to first page after clearing all
+      changePage(1);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
       toast.error('삭제에 실패했습니다.', {
@@ -132,6 +141,7 @@ export function VideoDashboard() {
 
   const allSelected = results.length > 0 && selectedIds.length === results.length;
 
+
   return (
     <div className="min-h-screen bg-white p-4">
       <div className="mx-auto max-w-6xl space-y-8">
@@ -158,7 +168,7 @@ export function VideoDashboard() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-semibold text-gray-900">
-                생성 결과 ({results.length})
+                생성 결과 (총 {totalCount}개)
               </h2>
               
               <div className="flex items-center gap-3">
@@ -249,7 +259,7 @@ export function VideoDashboard() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>모든 비디오를 삭제하시겠습니까?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        총 {results.length}개의 모든 비디오가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다. 삭제하려면 관리자 키를 입력하세요.
+                        총 {totalCount}개의 모든 비디오가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다. 삭제하려면 관리자 키를 입력하세요.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="py-4">
@@ -293,17 +303,62 @@ export function VideoDashboard() {
               ))}
             </div>
 
-            {hasMore && (
+            {totalPages > 1 && (
               <div className="flex justify-center mt-6">
-                <Button
-                  onClick={loadMoreVideos}
-                  disabled={isLoading || isAppending}
-                  variant="outline"
-                  size="lg"
-                  className="bg-white"
-                >
-                  {isAppending ? '로딩 중...' : '더보기'}
-                </Button>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious 
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (currentPage > 1) changePage(currentPage - 1);
+                        }}
+                        className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
+                      />
+                    </PaginationItem>
+                    
+                    {/* Page numbers */}
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      const startPage = Math.max(1, currentPage - 2);
+                      const pageNumber = startPage + i;
+                      
+                      if (pageNumber > totalPages) return null;
+                      
+                      return (
+                        <PaginationItem key={pageNumber}>
+                          <PaginationLink
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              changePage(pageNumber);
+                            }}
+                            isActive={currentPage === pageNumber}
+                          >
+                            {pageNumber}
+                          </PaginationLink>
+                        </PaginationItem>
+                      );
+                    })}
+                    
+                    {totalPages > 5 && currentPage < totalPages - 2 && (
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    )}
+                    
+                    <PaginationItem>
+                      <PaginationNext 
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (currentPage < totalPages) changePage(currentPage + 1);
+                        }}
+                        className={currentPage === totalPages ? 'pointer-events-none opacity-50' : ''}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
             )}
           </div>

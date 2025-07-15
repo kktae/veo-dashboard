@@ -139,6 +139,31 @@
     -webkit-box-orient: vertical;  
     overflow: hidden;
   }
+
+  /* Video card gradient glow animation for generating videos */
+  @keyframes gradient-glow {
+    0%, 100% {
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4), 0 0 20px rgba(59, 130, 246, 0.3), 0 0 30px rgba(59, 130, 246, 0.2);
+    }
+    50% {
+      box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.4), 0 0 20px rgba(147, 51, 234, 0.3), 0 0 30px rgba(147, 51, 234, 0.2);
+    }
+  }
+
+  .video-generating-glow {
+    animation: gradient-glow 3s ease-in-out infinite;
+    border: 1px solid transparent;
+    background: linear-gradient(white, white) padding-box,
+                linear-gradient(45deg, rgba(59, 130, 246, 0.6), rgba(147, 51, 234, 0.6), rgba(59, 130, 246, 0.6)) border-box;
+  }
+
+  /* Respect user's motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .video-generating-glow {
+      animation: none;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+    }
+  }
 }
 
 /* Custom video player slider styles */
@@ -177,3 +202,4 @@
   border-radius: 2px;
   border: none;
 }
+

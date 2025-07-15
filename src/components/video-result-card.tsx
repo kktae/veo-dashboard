@@ -53,6 +53,8 @@ export function VideoResultCard({ result, isSelected = false, onToggleSelection 
     <TooltipProvider>
       <Card className={`w-full flex flex-col h-[520px] transition-all duration-200 hover:shadow-lg hover:border-blue-500 hover:-translate-y-1 ${
         isSelected ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+      } ${
+        isProgressingStatus(result.status) ? 'video-generating-glow' : ''
       }`}>
         <CardHeader className="p-4 flex-shrink-0 h-[120px]">
           <div className="flex items-start justify-between h-full">

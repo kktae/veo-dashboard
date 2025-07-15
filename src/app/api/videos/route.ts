@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDatabase, VideoRecord, isVideoGenerationEnabled } from '@/lib/database';
+import { getDatabase, VideoRecord, isVideoGenerationEnabled, getVideoRecordsWithCount } from '@/lib/database';
 import { initializeVideoSync } from '@/lib/video-sync';
 import { Logger } from '@/lib/logger';
 
@@ -32,30 +32,61 @@ export async function GET(request: NextRequest) {
     Logger.apiStart(route, { ids: idsParam, limit, offset, status });
 
     const db = await getDatabase();
-    let videos: VideoRecord[];
 
     if (idsParam) {
       const ids = idsParam.split(',');
-      videos = await db.getVideosByIds(ids);
+      const videos = await db.getVideosByIds(ids);
+      
+      const duration = Date.now() - startTime;
+      Logger.apiSuccess(route, duration, { 
+        videoCount: videos.length,
+        hasIds: !!idsParam
+      });
+
+      return NextResponse.json({
+        videos,
+        count: videos.length,
+        totalCount: videos.length,
+        limit,
+        offset,
+        hasMore: false
+      });
     } else if (status) {
-      videos = await db.getVideosByStatus(status);
+      const videos = await db.getVideosByStatus(status);
+      
+      const duration = Date.now() - startTime;
+      Logger.apiSuccess(route, duration, { 
+        videoCount: videos.length,
+        hasStatus: !!status 
+      });
+
+      return NextResponse.json({
+        videos,
+        count: videos.length,
+        totalCount: videos.length,
+        limit,
+        offset,
+        hasMore: false
+      });
     } else {
-      videos = await db.getVideos(limit, offset);
+      const result = await getVideoRecordsWithCount(limit, offset);
+      
+      const duration = Date.now() - startTime;
+      Logger.apiSuccess(route, duration, { 
+        videoCount: result.videos.length,
+        totalCount: result.totalCount,
+        hasMore: result.hasMore
+      });
+
+      return NextResponse.json({
+        videos: result.videos,
+        count: result.videos.length,
+        totalCount: result.totalCount,
+        limit,
+        offset,
+        hasMore: result.hasMore
+      });
     }
-
-    const duration = Date.now() - startTime;
-    Logger.apiSuccess(route, duration, { 
-      videoCount: videos.length,
-      hasIds: !!idsParam,
-      hasStatus: !!status 
-    });
-
-    return NextResponse.json({
-      videos,
-      count: videos.length,
-      limit,
-      offset
-    });
   } catch (error) {
     const duration = Date.now() - startTime;
     Logger.apiError(route, duration, error);
